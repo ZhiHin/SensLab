@@ -1,0 +1,333 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   SensLab design tokens (docs/phase-0/26-ui-ux-design-system.md)
+
+   The register is a calibration laboratory, not a gaming website: near-black
+   surfaces, hairline structure, uppercase micro-labels on measured values,
+   and exactly two accent hues.
+
+   The canvas reads these same tokens at engine init (doc 26 §26.11), so the
+   test environment and the UI cannot drift apart.
+   ========================================================================== */
+
+@theme {
+  /* ---------------------------------------------------------------- colour */
+  /* Surfaces. Depth comes from value steps and hairlines, never from shadows. */
+  --color-void: #08090b;
+  --color-surface: #0e1014;
+  --color-surface-2: #14171c;
+  --color-hairline: #20242b;
+  --color-hairline-strong: #2c323b;
+
+  /* Text. `text-3` is verified at >= 4.5:1 against `surface`. */
+  --color-text-1: #e8eaed;
+  --color-text-2: #9aa1ac;
+  --color-text-3: #7a828e;
+
+  /* Trace Cyan — live data, instruments, primary action. */
+  --color-accent: #31e2c4;
+  --color-accent-dim: #1e8f7c;
+
+  /* Filament — the result, and only the result (SENS-UX-003). Never on a
+     button, a link, or a chart series. Its scarcity is what makes the
+     recommendation reveal land. */
+  --color-result: #ffc46b;
+
+  --color-critical: #ff5c5c;
+  --color-caution: #ffb020;
+
+  /* ---------------------------------------------------------------- type */
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* ---------------------------------------------------------------- radius */
+  /* 2px throughout, 0 on data surfaces. Rounded, friendly shapes work against
+     the instrument register. */
+  --radius-none: 0px;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+
+  /* ---------------------------------------------------------------- motion */
+  /* Instruments settle; they do not bounce. No easing curve here overshoots. */
+  --ease-instrument: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out-quick: cubic-bezier(0.3, 0, 0.2, 1);
+
+  --duration-micro: 120ms;
+  --duration-short: 200ms;
+  --duration-medium: 320ms;
+  --duration-long: 640ms;
+  --duration-reveal: 1400ms;
+}
+
+:root {
+  /* Spacing rhythm (doc 25 §25.14): 8px base, 4px micro. */
+  --space-micro: 4px;
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 40px;
+  --space-5: 64px;
+  --space-6: 96px;
+
+  --measure-max: 1200px;
+  --measure-wide: 1440px;
+
+  /* Instrument grid: 1px hairline at very low opacity, behind content only. */
+  --grid-pitch: 48px;
+  --grid-opacity: 0.04;
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+html {
+  background-color: var(--color-void);
+  /* Native scrolling is never hijacked (FR-102). */
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-void);
+  color: var(--color-text-1);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100dvh;
+}
+
+/* Every measured value uses tabular figures. Jittering digits in an instrument
+   readout are the fastest way to look imprecise (SENS-UX-007). */
+.tabular,
+[data-numeric],
+.font-mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ==========================================================================
+   Focus — the reticle (SENS-UX-010)
+   Four corner ticks rather than a rectangle. Never `outline: none` without a
+   replacement.
+   ========================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-xs);
+}
+
+/* ==========================================================================
+   Typography scale (doc 26 §26.4)
+   ========================================================================== */
+
+.type-display-xl {
+  font-family: var(--font-display);
+  font-size: clamp(64px, 11vw, 112px);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  font-weight: 500;
+}
+
+.type-display-l {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 7vw, 72px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+}
+
+.type-display-m {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  font-weight: 500;
+}
+
+.type-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.type-body-s {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* The most characteristic type style in the product: an uppercase micro-label
+   marks every measured quantity (SENS-UX-009). */
+.type-label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-3);
+}
+
+.type-data-l {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.type-data-m {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.type-data-s {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Motifs (doc 26 §26.5)
+   ========================================================================== */
+
+.instrument-grid {
+  background-image:
+    linear-gradient(to right, var(--color-hairline) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-hairline) 1px, transparent 1px);
+  background-size: var(--grid-pitch) var(--grid-pitch);
+  opacity: var(--grid-opacity);
+}
+
+/* Static grain. Never animated, and never present on the lab route. */
+.instrument-noise {
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'>\
+<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter>\
+<rect width='120' height='120' filter='url(%23n)' opacity='0.5'/></svg>");
+  opacity: 0.025;
+}
+
+/* Corner ticks: the panel treatment that replaces a border box. */
+.reticle-corners {
+  position: relative;
+}
+
+.reticle-corners::before,
+.reticle-corners::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: var(--color-hairline-strong);
+  border-style: solid;
+  pointer-events: none;
+}
+
+.reticle-corners::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+
+.reticle-corners::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+/* ==========================================================================
+   Custom scrollbar (SENS-UX-012, FR-102)
+
+   Styling only. Native scrolling, momentum, keyboard scrolling, scroll
+   anchoring and scrollIntoView all behave normally, and platforms with overlay
+   scrollbars keep their own behaviour.
+   ========================================================================== */
+
+@supports (scrollbar-width: thin) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-hairline-strong) var(--color-void);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-void);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-hairline-strong);
+  border-radius: var(--radius-xs);
+  border: 3px solid var(--color-void);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-dim);
+  border-width: 2px;
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--color-void);
+}
+
+/* ==========================================================================
+   Reduced motion (SENS-UX-023, FR-101)
+
+   Honoured globally. The `data-motion` attribute lets a user override the OS
+   preference in Settings in either direction — some people want reduced motion
+   system-wide but full motion here, and some want the reverse.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) {
+    scroll-behavior: auto;
+  }
+
+  html:not([data-motion="full"]) *,
+  html:not([data-motion="full"]) *::before,
+  html:not([data-motion="full"]) *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* ==========================================================================
+   The lab route (SENS-BR-021, SENS-UX-022)
+
+   A restricted surface: no grain, no grid, no smooth scrolling, no transitions.
+   Nothing decorative may run while a measurement is in progress.
+   ========================================================================== */
+
+[data-surface="lab"] {
+  background-color: var(--color-void);
+  overflow: hidden;
+  scroll-behavior: auto;
+}
+
+[data-surface="lab"] * {
+  transition: none !important;
+  animation: none !important;
+}

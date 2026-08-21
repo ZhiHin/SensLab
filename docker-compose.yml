@@ -1,0 +1,24 @@
+# Local development database for SensLab.
+# Production uses a managed PostgreSQL instance; this file exists so that
+# `npm run db:up && npm run db:migrate && npm run db:seed` works from a clean clone.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: senslab-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: senslab_owner
+      POSTGRES_PASSWORD: senslab_dev_password
+      POSTGRES_DB: senslab
+    ports:
+      - "5435:5432"
+    volumes:
+      - senslab-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U senslab_owner -d senslab"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  senslab-pgdata:

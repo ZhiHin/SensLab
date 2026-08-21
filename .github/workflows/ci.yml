@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The gate order mirrors docs/phase-0/29-testing-strategy.md §29.9: cheapest and most
+# specific first, so a boundary violation or a type error fails in seconds rather than
+# after a browser download.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  # Values used only by CI. Real secrets never appear in this file.
+  APP_URL: http://localhost:3000
+  AUTH_SECRET: ci-only-auth-secret-value-that-is-long-enough-1234
+  ABUSE_HASH_SALT: ci-only-abuse-salt-value-that-is-long-enough-1234
+
+jobs:
+  static:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # doc 18 §18.5 — the architecture boundaries are machine-enforced, not aspirational.
+      - name: Architecture boundaries
+        run: npm run check:boundaries
+
+      - name: Secret scan (source)
+        run: npm run check:secrets
+
+  unit:
+    name: Unit and architecture tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      # Coverage is gated at 90% branch on core/ and game-adapters/ — the pure domain where a
+      # silent error would produce a plausible, confident, wrong recommendation.
+      - name: Unit tests with coverage gate
+        run: npm run test:coverage
+
+      - name: Architecture tests
+        run: npm run test:arch
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: senslab_owner
+          POSTGRES_PASSWORD: senslab_ci_password
+          POSTGRES_DB: senslab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U senslab_owner -d senslab"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_MIGRATION_URL: postgres://senslab_owner:senslab_ci_password@localhost:5432/senslab
+      # The suite runs as the least-privilege runtime role on purpose: connecting as the owner
+      # would not exercise the privileges production actually has (SENS-SEC-015).
+      DATABASE_URL: postgres://senslab_app:senslab_app_password@localhost:5432/senslab
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      # Migrations run from an empty database on every run, so a broken migration cannot hide
+      # behind an already-migrated instance.
+      - name: Migrate
+        run: npm run db:migrate
+
+      - name: Apply database roles
+        run: npm run db:roles
+
+      - name: Seed
+        run: npm run db:seed
+
+      - name: Integration tests
+        run: npm run test:integration
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    needs: [static]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: senslab_owner
+          POSTGRES_PASSWORD: senslab_ci_password
+          POSTGRES_DB: senslab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U senslab_owner -d senslab"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_MIGRATION_URL: postgres://senslab_owner:senslab_ci_password@localhost:5432/senslab
+      DATABASE_URL: postgres://senslab_app:senslab_app_password@localhost:5432/senslab
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Migrate, apply roles and seed
+        run: |
+          npm run db:migrate
+          npm run db:roles
+          npm run db:seed
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # Playwright builds and starts the production server itself: the security headers, the
+      # CSP nonce and the static/dynamic split all differ from the dev server.
+      - name: End-to-end smoke tests
+        run: npm run test:e2e
+
+      - name: Secret scan (built client bundle)
+        run: npm run check:secrets
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # High and critical advisories fail the build. Lower severities are reported, and a
+      # documented exception is the only way past one (SENS-SEC-017).
+      - run: npm audit --audit-level=high
