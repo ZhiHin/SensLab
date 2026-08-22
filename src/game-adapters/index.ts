@@ -4,6 +4,11 @@ import { LAUNCH_ADAPTERS } from "./launch-games";
 export * from "./types";
 export * from "./registry";
 export * from "./unverified";
+export * from "./verified-adapter";
+export * from "./scoped";
+export * from "./model";
+export * from "./advice";
+export * from "./verification";
 export * from "./launch-games";
 
 /**

@@ -1,59 +1,82 @@
-import { countsPer360, type CountsPer360 } from "@/core/types/brand";
-import { err, ok } from "@/core/types/result";
-import type { ScopeKey, VerificationStatus } from "@/core/types/vocabulary";
-import {
-  cmPer360FromCounts,
-  countsPer360FromDegreesPerCount,
-  degreesPerCount,
-} from "@/core/sensitivity/canonical";
-import type {
-  CanonicalisationOutcome,
-  ConversionContext,
-  ConversionFailure,
-  ConversionOutcome,
-  GameAdapter,
-  ScopeDefinition,
-  SettingValidation,
-  VerificationEvidence,
-} from "@/game-adapters/types";
+import { cmPer360FromCounts, countsPer360FromDegreesPerCount } from "@/core/sensitivity/canonical";
+import type { GameAdapter, VerificationEvidence, VerificationMeasurement } from "@/game-adapters";
+import { createVerifiedAdapter, type VerifiedScopeSpec } from "@/game-adapters";
+import type { TableAnchor } from "@/game-adapters";
 
 /**
  * A **test-only** verified adapter.
  *
- * It exists to prove that the adapter contract, the registry and the verification gate work
- * end to end. Its yaw constant is openly fictional — it is not, and must never be presented
- * as, a claim about any real game. No production code imports this file; an architecture
- * test asserts that.
+ * It exists to exercise the verified half of the adapter contract: the model forms, the
+ * quantisation, the scoped conversion, the gate, and the construction checks. Its constants
+ * are openly fictional and are not, and must never be presented as, a claim about any real
+ * game. No production code imports this file; an architecture test asserts that, and a second
+ * one asserts that no launch adapter cites the fixture's register entries.
  *
- * The real adapters arrive in Phase 5, one register entry at a time.
+ * Note what it is *not*: a reimplementation. Since Phase 5 the fixture is built by
+ * `createVerifiedAdapter`, the same function a real adapter would use, so the conformance
+ * suite is testing production code rather than a parallel copy that could quietly diverge
+ * from it.
+ *
+ * The real adapters arrive one closed register entry at a time. As of Phase 5 there are none.
  */
 
+/** Fictional. Chosen so that a setting of 1 gives a round 18,000 counts per 360. */
 export const FIXTURE_YAW_DEG_PER_COUNT = 0.02;
+
+const fixtureCounts = (settingValue: number): number =>
+  countsPer360FromDegreesPerCount(settingValue * FIXTURE_YAW_DEG_PER_COUNT);
+
+/**
+ * "Measurements" generated from the model itself.
+ *
+ * Legitimate for a fixture whose game does not exist, and *only* for that: a real adapter's
+ * measurements come from the procedure in doc 08 §8.5, and generating them from the model
+ * would defeat the one check that compares a model against reality. The distinction is
+ * enforced socially rather than mechanically, so it is stated plainly here.
+ */
+function fictionalMeasurement(
+  settingValue: number,
+  dpi: number,
+  scopeKey: VerificationMeasurement["scopeKey"] = "hipfire",
+): VerificationMeasurement {
+  return {
+    scopeKey,
+    settingValue,
+    dpi,
+    measuredCmPer360: cmPer360FromCounts(fixtureCounts(settingValue), dpi),
+    method: "fictional — generated from the fixture model, not measured",
+  };
+}
 
 const EVIDENCE: VerificationEvidence = {
   verifiedAt: "2026-01-01T00:00:00.000Z",
   verifiedAgainstBuild: "fixture-build-1",
   sourceRefs: ["fixture://tests/helpers/fixture-adapter.ts"],
   signedOffBy: ["fixture-a", "fixture-b"],
+  // Two widely separated settings, as doc 08 §8.5 step 2 requires of a real campaign.
+  measurements: [fictionalMeasurement(0.5, 800), fictionalMeasurement(6, 800)],
 };
 
-const HIPFIRE: ScopeDefinition = {
+const HIPFIRE: VerifiedScopeSpec = {
   scopeKey: "hipfire",
   displayName: { en: "Hipfire" },
   settingLabel: { en: "Sensitivity" },
-  hasSeparateSetting: false,
-  modelForm: "linear_yaw",
+  settingKey: "sensitivity",
+  model: { form: "linear_yaw", yawDegPerCountAtSettingOne: FIXTURE_YAW_DEG_PER_COUNT },
   settingRange: { min: 0.1, max: 10, step: 0.01, decimals: 2 },
   adsModel: "raw_multiplier",
   fovAxis: "horizontal",
   verification: { status: "verified", evidence: EVIDENCE, registerEntry: "EV-FIXTURE" },
 };
 
-const ADS: ScopeDefinition = {
+const ADS: VerifiedScopeSpec = {
   ...HIPFIRE,
   scopeKey: "ads",
   displayName: { en: "ADS" },
   settingLabel: { en: "ADS Sensitivity" },
+  settingKey: "ads_sensitivity",
+  magnification: 2,
+  optics: { kind: "tangent_magnification", magnification: 2 },
   verification: { status: "unverified", registerEntry: "EV-FIXTURE-ADS" },
 };
 
@@ -62,155 +85,112 @@ export interface FixtureAdapterOptions {
   readonly gameVersionLabel?: string;
   readonly adapterVersion?: string;
   readonly includeUnverifiedAdsScope?: boolean;
+  /** Promotes the ADS scope to verified, for testing the scoped conversion path. */
+  readonly verifiedAdsScope?: boolean;
+  readonly adsModel?: VerifiedScopeSpec["adsModel"];
 }
 
 export function createFixtureAdapter(options: FixtureAdapterOptions = {}): GameAdapter {
-  const gameId = options.gameId ?? "fixture-game";
-  const gameVersionLabel = options.gameVersionLabel ?? "1.0";
-  const adapterVersion = options.adapterVersion ?? "1.0.0";
-  const scopes: ScopeDefinition[] = [HIPFIRE];
-  if (options.includeUnverifiedAdsScope ?? true) scopes.push(ADS);
+  const scopes: VerifiedScopeSpec[] = [HIPFIRE];
 
-  const scopeFor = (scopeKey: ScopeKey): ScopeDefinition | undefined =>
-    scopes.find((scope) => scope.scopeKey === scopeKey);
+  if (options.verifiedAdsScope === true) {
+    scopes.push({
+      ...ADS,
+      ...(options.adsModel === undefined ? {} : { adsModel: options.adsModel }),
+      verification: {
+        status: "verified",
+        // A verified scope needs measurements *of that scope*. Reusing hipfire's would be
+        // claiming the ADS model was established by readings that never touched it — which
+        // the construction check rejects, and rightly.
+        evidence: {
+          ...EVIDENCE,
+          measurements: [
+            fictionalMeasurement(0.5, 800, "ads"),
+            fictionalMeasurement(6, 800, "ads"),
+          ],
+        },
+        registerEntry: "EV-FIXTURE",
+      },
+    });
+  } else if (options.includeUnverifiedAdsScope ?? true) {
+    scopes.push(ADS);
+  }
 
-  const fail = (
-    code: ConversionFailure["code"],
-    scopeKey: ScopeKey,
-    detail: string,
-    registerEntry?: string,
-  ): ConversionFailure => ({
-    code,
-    gameId,
-    gameVersionLabel,
-    scopeKey,
-    ...(registerEntry === undefined ? {} : { registerEntry }),
-    detail,
-  });
-
-  const quantise = (value: number, step: number, decimals: number): number =>
-    Number((Math.round(value / step) * step).toFixed(decimals));
-
-  return {
+  return createVerifiedAdapter({
     identity: {
-      gameId,
-      gameVersionLabel,
-      adapterVersion,
+      gameId: options.gameId ?? "fixture-game",
+      gameVersionLabel: options.gameVersionLabel ?? "1.0",
+      adapterVersion: options.adapterVersion ?? "1.0.0",
       displayName: { en: "Fixture Game" },
       region: "global",
     },
     scopes,
+  });
+}
 
-    verificationStatus(): VerificationStatus {
-      const statuses = scopes.map((scope) => scope.verification.status);
-      if (statuses.every((status) => status === "verified")) return "verified";
-      if (statuses.some((status) => status === "verified")) return "partial";
-      return "unverified";
-    },
+/* ------------------------------------------------------------------ a table-form fixture */
 
-    scopeVerification(scopeKey) {
-      return scopeFor(scopeKey)?.verification ?? null;
-    },
+/**
+ * Anchors for a fictional non-linear game.
+ *
+ * Deliberately not generated from a closed form: the point of Form B is that no closed form
+ * is known, so anchors that secretly follow one would make the interpolation tests vacuous.
+ * These are hand-chosen, strictly monotone, and unevenly spaced.
+ */
+export const FIXTURE_TABLE_ANCHORS: readonly TableAnchor[] = [
+  { setting: 5, countsPer360: 42000 },
+  { setting: 12, countsPer360: 19500 },
+  { setting: 25, countsPer360: 10400 },
+  { setting: 40, countsPer360: 7100 },
+  { setting: 60, countsPer360: 5200 },
+  { setting: 100, countsPer360: 3600 },
+];
 
-    openRegisterEntries(): readonly string[] {
-      return [
-        ...new Set(
-          scopes
-            .filter((scope) => scope.verification.status !== "verified")
-            .map((scope) => scope.verification.registerEntry),
-        ),
-      ].sort();
-    },
-
-    toCanonical(settingValue: number, context: ConversionContext): CanonicalisationOutcome {
-      const scope = scopeFor(context.scopeKey);
-      if (scope === undefined) {
-        return err(fail("UNSUPPORTED_SCOPE", context.scopeKey, "scope not offered by this game"));
-      }
-      if (scope.verification.status === "unverified") {
-        return err(
-          fail(
-            "EXTERNAL_VERIFICATION_REQUIRED",
-            context.scopeKey,
-            "scope is not verified",
-            scope.verification.registerEntry,
-          ),
-        );
-      }
-      const range = scope.settingRange;
-      if (range !== null && (settingValue < range.min || settingValue > range.max)) {
-        return err(
-          fail("SETTING_OUT_OF_RANGE", context.scopeKey, `outside [${range.min}, ${range.max}]`),
-        );
-      }
-
-      const counts = countsPer360FromDegreesPerCount(settingValue * FIXTURE_YAW_DEG_PER_COUNT);
-      return ok({
-        countsPer360: counts,
-        cmPer360: cmPer360FromCounts(counts, context.dpi),
-        adapterVersion,
-        gameVersionLabel,
-      });
-    },
-
-    fromCanonical(counts: CountsPer360 | number, context: ConversionContext): ConversionOutcome {
-      const scope = scopeFor(context.scopeKey);
-      if (scope === undefined) {
-        return err(fail("UNSUPPORTED_SCOPE", context.scopeKey, "scope not offered by this game"));
-      }
-      if (scope.verification.status === "unverified") {
-        return err(
-          fail(
-            "EXTERNAL_VERIFICATION_REQUIRED",
-            context.scopeKey,
-            "scope is not verified",
-            scope.verification.registerEntry,
-          ),
-        );
-      }
-
-      const range = scope.settingRange ?? { min: 0.1, max: 10, step: 0.01, decimals: 2 };
-      const ideal = degreesPerCount(counts) / FIXTURE_YAW_DEG_PER_COUNT;
-      const clampedValue = Math.min(Math.max(ideal, range.min), range.max);
-      const clamped = clampedValue !== ideal;
-      const value = quantise(clampedValue, range.step, range.decimals);
-
-      const achieved = countsPer360FromDegreesPerCount(value * FIXTURE_YAW_DEG_PER_COUNT);
-
-      return ok({
-        settings: [
-          {
-            key: "sensitivity",
-            label: scope.settingLabel,
-            idealValue: ideal,
-            value,
-            clamped,
-          },
-        ],
-        achievedCountsPer360: countsPer360(achieved),
-        achievedCmPer360: cmPer360FromCounts(achieved, context.dpi),
-        quantisationErrorPct: ((achieved - Number(counts)) / Number(counts)) * 100,
-        conversionMethod: "direct",
-        conversionCoefficient: null,
-        adapterVersion,
-        gameVersionLabel,
-        verification: scope.verification.status,
-      });
-    },
-
-    validate(settingValue: number, scopeKey: ScopeKey): SettingValidation {
-      const scope = scopeFor(scopeKey);
-      if (scope === undefined) return { valid: false, reason: "unsupported_scope" };
-      if (scope.verification.status === "unverified") return { valid: false, reason: "unverified" };
-      const range = scope.settingRange;
-      if (range === null) return { valid: false, reason: "unverified" };
-      if (settingValue < range.min) return { valid: false, reason: "below_min", range };
-      if (settingValue > range.max) return { valid: false, reason: "above_max", range };
-      const steps = settingValue / range.step;
-      if (Math.abs(steps - Math.round(steps)) > 1e-9) {
-        return { valid: false, reason: "not_on_step", range };
-      }
-      return { valid: true, range };
-    },
+function tableMeasurement(anchor: TableAnchor, dpi: number): VerificationMeasurement {
+  return {
+    scopeKey: "hipfire",
+    settingValue: anchor.setting,
+    dpi,
+    measuredCmPer360: cmPer360FromCounts(anchor.countsPer360, dpi),
+    method: "fictional — the anchors are the measurements for a table model",
   };
+}
+
+export function createTableFixtureAdapter(): GameAdapter {
+  return createVerifiedAdapter({
+    identity: {
+      gameId: "fixture-table-game",
+      gameVersionLabel: "1.0",
+      adapterVersion: "1.0.0",
+      displayName: { en: "Fixture Table Game" },
+      region: "global",
+    },
+    scopes: [
+      {
+        scopeKey: "hipfire",
+        displayName: { en: "Hipfire" },
+        settingLabel: { en: "General Sensitivity" },
+        settingKey: "sensitivity",
+        model: {
+          form: "table",
+          anchors: FIXTURE_TABLE_ANCHORS,
+          interpolation: "monotone_cubic_loglog",
+          extrapolation: "refuse",
+        },
+        settingRange: { min: 5, max: 100, step: 1, decimals: 0 },
+        adsModel: "raw_multiplier",
+        verification: {
+          status: "verified",
+          registerEntry: "EV-FIXTURE",
+          evidence: {
+            verifiedAt: "2026-01-01T00:00:00.000Z",
+            verifiedAgainstBuild: "fixture-table-build-1",
+            sourceRefs: ["fixture://tests/helpers/fixture-adapter.ts"],
+            signedOffBy: ["fixture-a", "fixture-b"],
+            measurements: FIXTURE_TABLE_ANCHORS.map((anchor) => tableMeasurement(anchor, 800)),
+          },
+        },
+      },
+    ],
+  });
 }

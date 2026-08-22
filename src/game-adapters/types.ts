@@ -10,6 +10,8 @@ import type {
   VerificationStatus,
 } from "../core/types/vocabulary";
 import type { MatchCriterion } from "../core/sensitivity/fov";
+import type { SensitivityModel } from "./model";
+import type { ScopeOptics } from "./scoped";
 
 /**
  * The game adapter contract (doc 12 §12.3).
@@ -42,6 +44,23 @@ export interface AdapterIdentity {
 
 /* ------------------------------------------------------------------ verification */
 
+/**
+ * One reading from the verification procedure (doc 08 §8.5).
+ *
+ * A cm/360 at a known DPI and a known setting is exactly what step 4 produces — the 360°
+ * alignment measurement yields the canonical unit directly, with no intermediate angle
+ * estimation. Storing what was *measured* rather than a constant derived from it means the
+ * derivation can be re-checked, and it is what the golden-vector test replays.
+ */
+export interface VerificationMeasurement {
+  readonly scopeKey: ScopeKey;
+  readonly settingValue: number;
+  readonly dpi: number;
+  readonly measuredCmPer360: number;
+  /** How the count displacement was executed (doc 08 §8.5 step 3). */
+  readonly method: string;
+}
+
 export interface VerificationEvidence {
   /** ISO-8601 instant at which the verification procedure was completed. */
   readonly verifiedAt: string;
@@ -51,6 +70,16 @@ export interface VerificationEvidence {
   readonly sourceRefs: readonly string[];
   /** Two-person sign-off, per doc 08 §8.2. */
   readonly signedOffBy: readonly [string, string];
+  /**
+   * The raw readings the model was derived from.
+   *
+   * Required, and checked at construction: `createVerifiedAdapter` refuses a scope whose
+   * declared model does not reproduce these within ±0.5% (doc 08 §8.5 step 7). This is the
+   * only check in the system that compares a model against *reality* rather than against
+   * itself — a wrong constant passes every other test in the suite while being uniformly
+   * wrong, and this is what catches it.
+   */
+  readonly measurements: readonly VerificationMeasurement[];
 }
 
 export interface ScopeVerification {
@@ -81,7 +110,14 @@ export interface ScopeDefinition {
   readonly magnification?: number;
   readonly hasSeparateSetting: boolean;
   readonly modelForm: ModelForm | null;
+  /**
+   * The measured parameters. `null` whenever the scope is unverified — an unmeasured scope
+   * has no model, and declaring one "provisionally" is the guess `SENS-BR-013` forbids.
+   */
+  readonly model: SensitivityModel | null;
   readonly settingRange: SettingRange | null;
+  /** How this scope's field of view is known. `null` until verification establishes it. */
+  readonly optics: ScopeOptics | null;
   readonly adsModel: AdsModel;
   readonly fovAxis?: FovAxis;
   readonly fovScaling?: string;
@@ -99,6 +135,19 @@ export interface ConversionContext {
   readonly aspectRatio?: number;
   /** Overrides the scope's default matching criterion (FR-085). */
   readonly criterion?: MatchCriterion;
+  /**
+   * What the supplied counts/360 refers to. Defaults to `"hipfire"`.
+   *
+   * The calibration engine recommends a *hipfire* value and scoped values are derived from it
+   * (doc 11 §11.7), so the default is the product's case: hand `fromCanonical` the hipfire
+   * target and a scope key, and it applies the matching criterion for you.
+   *
+   * `"scope"` says the value is already this scope's own target — which is what the ADS and
+   * Scope Calibration tests will produce once scoped sensitivities are *measured* rather than
+   * derived. It is a statement about the input's meaning, not a way around the gate: an
+   * unverified scope refuses under either basis.
+   */
+  readonly canonicalBasis?: "hipfire" | "scope";
 }
 
 /**

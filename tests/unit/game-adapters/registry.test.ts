@@ -69,13 +69,45 @@ describe("AdapterRegistry", () => {
       ...dishonest,
       scopes: dishonest.scopes.map((scope) =>
         scope.scopeKey === "hipfire"
-          ? { ...scope, verification: { status: "verified" as const, registerEntry: "EV-X" } }
+          ? { ...scope, verification: { status: "verified" as const, registerEntry: "EV-FIXTURE" } }
           : scope,
       ),
     };
     expect(() => registry.register(tampered, { isCurrent: true })).toThrow(
       /without verification evidence/,
     );
+  });
+
+  it("refuses to register a scope citing an entry that is not in the register", () => {
+    // Since Phase 5 the register in code is the authority. A scope may not cite an entry
+    // that does not exist, and may not claim more than the entry it cites (`SENS-SEC-023`).
+    const registry = new AdapterRegistry();
+    const base = createFixtureAdapter();
+    const invented = {
+      ...base,
+      scopes: base.scopes.map((scope) =>
+        scope.scopeKey === "hipfire"
+          ? { ...scope, verification: { ...scope.verification, registerEntry: "EV-X" } }
+          : scope,
+      ),
+    };
+    expect(() => registry.register(invented, { isCurrent: true })).toThrow(
+      /not in the verification register/,
+    );
+  });
+
+  it("refuses to register a scope whose register entry is still open", () => {
+    const registry = new AdapterRegistry();
+    const base = createFixtureAdapter();
+    const overclaiming = {
+      ...base,
+      scopes: base.scopes.map((scope) =>
+        scope.scopeKey === "hipfire"
+          ? { ...scope, verification: { ...scope.verification, registerEntry: "EV-001" } }
+          : scope,
+      ),
+    };
+    expect(() => registry.register(overclaiming, { isCurrent: true })).toThrow(/is still open/);
   });
 
   it("refuses to register a scope marked unverified that nonetheless carries evidence", () => {
@@ -89,12 +121,13 @@ describe("AdapterRegistry", () => {
               ...scope,
               verification: {
                 status: "unverified" as const,
-                registerEntry: "EV-X",
+                registerEntry: "EV-FIXTURE-ADS",
                 evidence: {
                   verifiedAt: "2026-01-01T00:00:00.000Z",
                   verifiedAgainstBuild: "b",
                   sourceRefs: [],
                   signedOffBy: ["a", "b"] as [string, string],
+                  measurements: [],
                 },
               },
             }

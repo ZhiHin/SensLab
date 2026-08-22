@@ -72,12 +72,15 @@ export default async function ShellPage() {
               ))}
             </ul>
 
-            <div className="mt-5">
+            <div className="mt-5 flex flex-col gap-4">
               <Callout tone="caution" title="No verified conversions yet">
                 Every launch adapter is still unverified, so SensLab will not print an in-game
                 sensitivity number for any of them. That is deliberate: an incorrect converted value
                 is worse than none, because it gets copied into a game and trusted.
               </Callout>
+              <Link href="/games" className="type-label text-text-2 hover:text-text-1">
+                See exactly what has been measured →
+              </Link>
             </div>
           </Panel>
 

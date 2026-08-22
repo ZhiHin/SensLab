@@ -13,18 +13,22 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 4 — Calibration Engine.** The project follows a phased plan defined in
+**Phase 5 — Verified Game Adapters.** The project follows a phased plan defined in
 [`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
-authentication, the pure-domain maths, the game-adapter contract, CI — the engine that runs an
-aim session, the seven MVP tests with every metric doc 10 defines, and the statistical engine
-that turns those measurements into a response curve and a recommendation.
+authentication, the pure-domain maths, CI — the engine that runs an aim session, the seven MVP
+tests with every metric doc 10 defines, the statistical engine that turns those measurements
+into a response curve and a recommendation, and the complete machinery for turning that
+recommendation into a game setting.
 
 **The calibration is deterministic statistics, not AI** (`SENS-BR-002`). It is a noisy
 one-dimensional derivative-free search with a drift model, and it **refuses to invent a peak**:
 a flat or indistinguishable response returns a range and says why (`SENS-BR-017`).
 
-**There is still no game conversion.** Turning a recommended sensitivity into a particular
-game's setting needs verified per-game constants, which is Phase 5.
+**The game conversion machinery is complete and ships zero constants.** Both model forms, the
+quantisation, the ADS/scope family, the verification gate, the re-check mechanism and the
+settings surface are built and tested against fictional fixtures. No real game can be
+converted, because no entry in the verification register has been closed — and the code is
+now built so that a constant **cannot** be shipped without closing one (`SENS-BR-013`).
 
 | Phase | Scope                                          | State                                                              |
 | ----- | ---------------------------------------------- | ------------------------------------------------------------------ |
@@ -32,8 +36,8 @@ game's setting needs verified per-game constants, which is Phase 5.
 | 1     | Application foundation                         | Complete — [report](docs/implementation/phase-1-completion.md)     |
 | 2     | Aim test engine (Canvas, pointer lock, timing) | Complete — [report](docs/implementation/phase-2-completion.md)     |
 | 3     | The MVP aim tests and their metrics            | Complete — [report](docs/implementation/phase-3-completion.md)     |
-| **4** | **Calibration and statistical engine**         | **Complete** — [report](docs/implementation/phase-4-completion.md) |
-| 5     | Verified game adapters                         | Not started                                                        |
+| 4     | Calibration and statistical engine             | Complete — [report](docs/implementation/phase-4-completion.md)     |
+| **5** | **Verified game adapters**                     | **Complete** — [report](docs/implementation/phase-5-completion.md) |
 | 6     | Advanced aim tests                             | Not started                                                        |
 | 7     | Results and Aim DNA                            | Not started                                                        |
 | 8     | Validation and fine-tuning                     | Not started                                                        |
@@ -235,7 +239,26 @@ value is worse than none, because it gets copied into a game and trusted.
 
 Current state: **15 open verification items, 0 verified.** See
 [`36-external-verification-register.md`](docs/phase-0/36-external-verification-register.md) and
-[`08-supported-games.md`](docs/phase-0/08-supported-games.md) §8.5 for the procedure.
+[`08-supported-games.md`](docs/phase-0/08-supported-games.md) §8.5 for the procedure. The same
+register lives in code at `src/game-adapters/verification/register.ts`, and a test asserts the
+two agree.
+
+**How a constant gets shipped.** Since Phase 5 the register is machine-enforced:
+
+1. Perform the procedure in doc 08 §8.5 and record the raw readings — a cm/360 at a known DPI
+   and a known setting, at two widely separated settings at least.
+2. Close the register entry with evidence: build, date, two sign-offs, the readings.
+3. Build the adapter with `createVerifiedAdapter`. It **refuses to construct** if the entry is
+   still open, if fewer than two distinct settings were measured, or if the declared model does
+   not reproduce the readings within ±0.5%.
+4. Register it. The conformance suite (`tests/helpers/adapter-conformance.ts`) covers every
+   registered adapter automatically — all eight test classes from doc 12 §12.8, including the
+   golden-vector replay of the recorded measurements.
+
+Verification decays: a scope older than six months, or hit by a reported game update, drops to
+`needs_recheck` and serves values behind a "last verified" disclosure. A confirmed mismatch
+drops it to `unverified` and it serves nothing. The overlay is applied inside the adapter, so
+no surface can opt out. `/games` publishes the whole register.
 
 ---
 

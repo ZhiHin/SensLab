@@ -73,3 +73,31 @@ export async function findGameVersionBySlug(
     .limit(1);
   return rows[0] ?? null;
 }
+
+/**
+ * Records a verification downgrade against a game version (doc 08 §8.6).
+ *
+ * Downgrade only. The database is the record of what the product told users, and a status
+ * that could be raised here would be verification granted without the evidence and sign-off
+ * that doc 36 §36.7 requires — that path is a new `game_versions` row, not an update.
+ *
+ * `verified_at` and `verified_against_build` are deliberately left in place: the
+ * `game_versions_verified_has_evidence` constraint requires them while the status is
+ * `needs_recheck`, and they are exactly what the UI has to disclose in that state.
+ */
+export async function downgradeVersionVerification(
+  gameVersionId: string,
+  status: Extract<VerificationStatus, "needs_recheck" | "unverified">,
+  tx?: Executor,
+): Promise<void> {
+  const db = executor(tx);
+  await db
+    .update(gameVersions)
+    .set({
+      verificationStatus: status,
+      // Dropping to `unverified` means the evidence no longer supports serving values, so
+      // the columns that assert it are cleared along with the status.
+      ...(status === "unverified" ? { verifiedAt: null, verifiedAgainstBuild: null } : {}),
+    })
+    .where(eq(gameVersions.id, gameVersionId));
+}

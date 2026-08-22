@@ -66,7 +66,9 @@ export function createUnverifiedAdapter(spec: UnverifiedAdapterSpec): GameAdapte
     settingLabel: { en: scopeKey },
     hasSeparateSetting: false,
     modelForm: null,
+    model: null,
     settingRange: null,
+    optics: null,
     adsModel: "unknown",
     verification,
   }));

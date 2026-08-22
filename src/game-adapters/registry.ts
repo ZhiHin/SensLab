@@ -1,5 +1,13 @@
 import type { VerificationStatus } from "../core/types/vocabulary";
 import type { GameAdapter } from "./types";
+import { authorisesConstants, findRegisterEntry } from "./verification/register";
+import {
+  evaluateRecheck,
+  type RecheckInput,
+  type RecheckTrigger,
+  type VerificationOverlay,
+} from "./verification/staleness";
+import { withVerificationOverlay } from "./verification/overlay";
 
 /**
  * The adapter registry (doc 12 §12.4).
@@ -27,11 +35,17 @@ export interface AdapterSummary {
   readonly isCurrent: boolean;
   /** Register entries still outstanding for this adapter, if any. */
   readonly openRegisterEntries: readonly string[];
+  /** Latest verification instant across the adapter's scopes; `null` when never verified. */
+  readonly lastVerifiedAt: string | null;
+  readonly verifiedAgainstBuild: string | null;
+  /** Why the adapter was downgraded, when a re-check overlay has been applied. */
+  readonly recheckReason: string | null;
 }
 
 interface Registration {
   readonly adapter: GameAdapter;
   readonly isCurrent: boolean;
+  readonly overlay: VerificationOverlay | null;
 }
 
 const key = (gameId: string, versionLabel: string): string => `${gameId}@${versionLabel}`;
@@ -66,7 +80,7 @@ export class AdapterRegistry {
       this.currentByGame.set(gameId, gameVersionLabel);
     }
 
-    this.byKey.set(registrationKey, { adapter, isCurrent: options.isCurrent });
+    this.byKey.set(registrationKey, { adapter, isCurrent: options.isCurrent, overlay: null });
   }
 
   /**
@@ -78,7 +92,28 @@ export class AdapterRegistry {
    */
   private assertVerificationIntegrity(adapter: GameAdapter): void {
     for (const scope of adapter.scopes) {
-      const { status, evidence } = scope.verification;
+      const { status, evidence, registerEntry } = scope.verification;
+
+      // The register is the authority on what SensLab has established (doc 36 §36.1). A scope
+      // may not claim more than its governing entry does, and it may not cite an entry that
+      // does not exist — which is what makes "a parameter change without a corresponding
+      // register update is rejected" (`SENS-SEC-023`) a machine check rather than a habit.
+      if (findRegisterEntry(registerEntry) === null) {
+        throw new AdapterRegistrationError(
+          `${adapter.identity.gameId}@${adapter.identity.gameVersionLabel} scope "${scope.scopeKey}" ` +
+            `cites register entry "${registerEntry}", which is not in the verification register`,
+        );
+      }
+      if (
+        (status === "verified" || status === "needs_recheck") &&
+        !authorisesConstants(registerEntry)
+      ) {
+        throw new AdapterRegistrationError(
+          `${adapter.identity.gameId}@${adapter.identity.gameVersionLabel} scope "${scope.scopeKey}" ` +
+            `claims status "${status}" but register entry "${registerEntry}" is still open`,
+        );
+      }
+
       if ((status === "verified" || status === "needs_recheck") && evidence === undefined) {
         throw new AdapterRegistrationError(
           `${adapter.identity.gameId}@${adapter.identity.gameVersionLabel} scope "${scope.scopeKey}" ` +
@@ -108,7 +143,7 @@ export class AdapterRegistry {
   /** Every registered adapter, newest-agnostic, ordered by game id then version label. */
   list(): readonly AdapterSummary[] {
     return [...this.byKey.values()]
-      .map(({ adapter, isCurrent }) => this.summarise(adapter, isCurrent))
+      .map(({ adapter, isCurrent, overlay }) => this.summarise(adapter, isCurrent, overlay))
       .sort((a, b) =>
         a.gameId === b.gameId
           ? a.gameVersionLabel.localeCompare(b.gameVersionLabel)
@@ -121,11 +156,78 @@ export class AdapterRegistry {
     return this.list().filter((summary) => summary.isCurrent);
   }
 
-  private summarise(adapter: GameAdapter, isCurrent: boolean): AdapterSummary {
+  /**
+   * Applies a verification downgrade in place (doc 08 §8.6, doc 12 §12.7).
+   *
+   * The stored registration is *replaced* with the overlaid adapter, so every later
+   * `resolve` returns the downgraded one. There is deliberately no second resolution path
+   * that returns the original: a downgrade that callers can opt out of is not a downgrade.
+   */
+  applyOverlay(gameId: string, versionLabel: string, overlay: VerificationOverlay): void {
+    const registrationKey = key(gameId, versionLabel);
+    const registration = this.byKey.get(registrationKey);
+    if (registration === undefined) {
+      throw new AdapterRegistrationError(`adapter ${registrationKey} is not registered`);
+    }
+    this.byKey.set(registrationKey, {
+      adapter: withVerificationOverlay(registration.adapter, overlay),
+      isCurrent: registration.isCurrent,
+      overlay,
+    });
+  }
+
+  /**
+   * Evaluates every registration against the clock and any reported triggers, applying
+   * whatever downgrades are due. Returns the adapters that changed.
+   */
+  runRecheck(
+    input: RecheckInput & {
+      readonly triggersByGame?: ReadonlyMap<string, readonly RecheckTrigger[]>;
+    },
+  ): readonly AdapterSummary[] {
+    const changed: AdapterSummary[] = [];
+
+    for (const [registrationKey, registration] of [...this.byKey.entries()]) {
+      const { gameId, gameVersionLabel } = registration.adapter.identity;
+      const triggers = input.triggersByGame?.get(gameId) ?? input.triggers ?? [];
+      const overlay = evaluateRecheck(registration.adapter, {
+        now: input.now,
+        triggers,
+        ...(input.windowDays === undefined ? {} : { windowDays: input.windowDays }),
+      });
+      if (overlay === null) continue;
+
+      this.applyOverlay(gameId, gameVersionLabel, overlay);
+      const updated = this.byKey.get(registrationKey) as Registration;
+      changed.push(this.summarise(updated.adapter, updated.isCurrent, updated.overlay));
+    }
+
+    return changed;
+  }
+
+  private summarise(
+    adapter: GameAdapter,
+    isCurrent: boolean,
+    overlay: VerificationOverlay | null = null,
+  ): AdapterSummary {
     // The adapter is the authority on what is still outstanding: an adapter that has never
     // been verified does not know its scope roster, so inferring from scopes alone would
     // report "nothing outstanding" for exactly the games with the most outstanding work.
     const openEntries = new Set<string>(adapter.openRegisterEntries());
+
+    // The most recent verification across scopes is what the "last verified" disclosure
+    // shows: a partially verified game whose hipfire was checked yesterday should not read
+    // as stale because a scope measured a year ago drags the date backwards.
+    let lastVerifiedAt: string | null = null;
+    let verifiedAgainstBuild: string | null = null;
+    for (const scope of adapter.scopes) {
+      const evidence = scope.verification.evidence;
+      if (evidence === undefined) continue;
+      if (lastVerifiedAt === null || evidence.verifiedAt > lastVerifiedAt) {
+        lastVerifiedAt = evidence.verifiedAt;
+        verifiedAgainstBuild = evidence.verifiedAgainstBuild;
+      }
+    }
 
     return {
       gameId: adapter.identity.gameId,
@@ -136,6 +238,9 @@ export class AdapterRegistry {
       status: adapter.verificationStatus(),
       isCurrent,
       openRegisterEntries: [...openEntries].sort(),
+      lastVerifiedAt,
+      verifiedAgainstBuild,
+      recheckReason: overlay?.reason ?? null,
     };
   }
 
