@@ -13,6 +13,10 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const isCi = process.env["CI"] === "true";
 
+/** The dev origin, used only by the `lab` project. */
+const DEV_PORT = 3001;
+const DEV_URL = `http://localhost:${DEV_PORT}`;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
@@ -32,16 +36,48 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      testIgnore: /lab\..*\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      // The engine harness is a development-only route: in the production build it 404s, which
+      // the chromium project asserts. Driving it needs the dev server, so it gets its own
+      // project pointed at a second origin.
+      //
+      // It runs alone, and that is a consequence of the engine being correct rather than a
+      // workaround: a session whose page loses focus pauses itself, because a session running
+      // in a background tab is not measuring anything. Parallel pages compete for focus, so
+      // these tests wait for every other project and then run one at a time.
+      name: "lab",
+      testMatch: /lab\..*\.spec\.ts$/,
+      dependencies: ["chromium"],
+      fullyParallel: false,
+      use: { ...devices["Desktop Chrome"], baseURL: DEV_URL },
+    },
+  ],
 
-  webServer: {
-    // Against the production build, not the dev server: the security headers, the CSP nonce
-    // and the static/dynamic route split all differ in development.
-    command: "npm run build && npm run start",
-    url: "http://localhost:3000",
-    reuseExistingServer: !isCi,
-    timeout: 180_000,
-    stdout: "pipe",
-    stderr: "pipe",
-  },
+  webServer: [
+    {
+      // Against the production build, not the dev server: the security headers, the CSP nonce
+      // and the static/dynamic route split all differ in development.
+      command: "npm run build && npm run start",
+      url: "http://localhost:3000",
+      reuseExistingServer: !isCi,
+      timeout: 180_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      // The dev server, purely so the engine harness route exists to be driven.
+      command: `next dev --port ${DEV_PORT}`,
+      url: DEV_URL,
+      reuseExistingServer: !isCi,
+      timeout: 180_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ],
 });

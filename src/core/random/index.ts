@@ -107,7 +107,14 @@ export function sfc32(a: number, b: number, c: number, d: number): Rng {
  * shift the target positions of another, and the paired-stimulus design (doc 13 §13.6)
  * requires candidate *i*'s trial *k* to draw exactly what candidate *j*'s trial *k* drew.
  */
-export function deriveRng(seed: bigint | number, stream: string, ...indices: number[]): Rng {
+export function deriveRng(
+  seed: bigint | number | string,
+  stream: string,
+  ...indices: number[]
+): Rng {
+  // Strings are accepted because a session seed crosses the network as one — a 64-bit value
+  // does not survive JSON as a number. Hashing makes the representation irrelevant, so
+  // `deriveRng(42)` and `deriveRng("42")` are deliberately the same stream.
   const key = `${seed.toString()}::${stream}${indices.length > 0 ? `::${indices.join(":")}` : ""}`;
   const [a, b, c, d] = cyrb128(key);
   const rng = sfc32(a, b, c, d);

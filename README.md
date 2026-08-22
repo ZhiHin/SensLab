@@ -13,24 +13,29 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 1 — Application Foundation.** The project follows a phased plan defined in
-[`docs/phase-0/`](docs/phase-0/). What exists today is the foundation: architecture, database,
-authentication, the pure-domain maths, the game-adapter contract, and CI.
+**Phase 2 — Aim Test Engine.** The project follows a phased plan defined in
+[`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
+authentication, the pure-domain maths, the game-adapter contract, CI — plus the engine that
+runs an aim session: an angular camera, pointer lock, analytic target motion, the trial state
+machine, frame-quality monitoring and a headless deterministic harness.
 
-| Phase | Scope                                          | State                                                              |
-| ----- | ---------------------------------------------- | ------------------------------------------------------------------ |
-| 0     | Product and engineering specification          | Complete — [`docs/phase-0/`](docs/phase-0/)                        |
-| **1** | **Application foundation**                     | **Complete** — [report](docs/implementation/phase-1-completion.md) |
-| 2     | Aim test engine (Canvas, pointer lock, timing) | Not started                                                        |
-| 3     | The five MVP aim tests                         | Not started                                                        |
-| 4     | Calibration and statistical engine             | Not started                                                        |
-| 5     | Verified game adapters                         | Not started                                                        |
-| 6     | Advanced aim tests                             | Not started                                                        |
-| 7     | Results and Aim DNA                            | Not started                                                        |
-| 8     | Validation and fine-tuning                     | Not started                                                        |
-| 9     | Accounts, history, hardware profiles           | Not started                                                        |
-| 10    | UI/UX polish and the landing experience        | Not started                                                        |
-| 11    | Hardening and release readiness                | Not started                                                        |
+**No aim tests exist yet.** The engine runs whatever `TestDefinition` it is handed; the seven
+real ones are Phase 3.
+
+| Phase | Scope                                              | State                                                              |
+| ----- | -------------------------------------------------- | ------------------------------------------------------------------ |
+| 0     | Product and engineering specification              | Complete — [`docs/phase-0/`](docs/phase-0/)                        |
+| 1     | Application foundation                             | Complete — [report](docs/implementation/phase-1-completion.md)     |
+| **2** | **Aim test engine (Canvas, pointer lock, timing)** | **Complete** — [report](docs/implementation/phase-2-completion.md) |
+| 3     | The five MVP aim tests                             | Not started                                                        |
+| 4     | Calibration and statistical engine                 | Not started                                                        |
+| 5     | Verified game adapters                             | Not started                                                        |
+| 6     | Advanced aim tests                                 | Not started                                                        |
+| 7     | Results and Aim DNA                                | Not started                                                        |
+| 8     | Validation and fine-tuning                         | Not started                                                        |
+| 9     | Accounts, history, hardware profiles               | Not started                                                        |
+| 10    | UI/UX polish and the landing experience            | Not started                                                        |
+| 11    | Hardening and release readiness                    | Not started                                                        |
 
 **There are no verified game conversions yet.** All five launch adapters are registered as
 unverified and refuse to emit a number — see [Game verification](#game-verification).
@@ -121,7 +126,14 @@ src/
     params/         Versioned algorithm parameter sets
     scoring/  calibration/  types/  random/
   game-adapters/    The ONLY module that knows a game exists
-  test-engine/      Canvas runtime. Contracts only in Phase 1
+  test-engine/      The aim engine. Runs outside React entirely
+    timing/         Injected clock, frame-budget and hitch monitoring
+    input/          Pointer lock, unadjustedMovement, coalesced samples
+    render/         Angular camera, Canvas 2D renderer, the score-free HUD
+    targets/        Seeded placement, analytic motion, hit resolution
+    telemetry/      Pre-allocated ring buffers, the metric-derivation seam
+    quality/        Environmental classification. Never touches a measurement
+    mount.tsx       The ONLY React-aware file in the engine
   db/               Drizzle schema, migrations, SQL, seed
   lib/              env, errors, logger, crypto, email
 ```
@@ -134,7 +146,10 @@ Four rules, all **machine-enforced** by ESLint zones, an architecture test suite
    a database, or Next.js.
 2. `core/` never imports `game-adapters/`. The calibration engine cannot learn that a game
    exists.
-3. `test-engine/` never imports React ([ADR-020](docs/phase-0/32-decision-log.md)).
+3. `test-engine/` never imports React, `next/*`, or the DOM outside the three files whose
+   subject is the browser ([ADR-020](docs/phase-0/32-decision-log.md)). `mount.tsx` is the
+   single React boundary, and it hears from the engine at stage boundaries only — never per
+   frame and never per trial.
 4. All SQL lives in `repositories/`, and every repository function takes an actor so ownership
    is enforced in SQL rather than by a caller's good intentions.
 
@@ -216,12 +231,22 @@ Current state: **15 open verification items, 0 verified.** See
 
 ## Testing
 
-| Layer        | Tool                     | What it covers                                             |
-| ------------ | ------------------------ | ---------------------------------------------------------- |
-| Unit         | Vitest                   | `core/` and `game-adapters/`. Gated at 90% branch coverage |
-| Architecture | Vitest                   | Module boundaries, determinism, secret hygiene             |
-| Integration  | Vitest + real PostgreSQL | Ownership, constraints, triggers, ingest idempotency, auth |
-| E2E          | Playwright               | Shell, auth screens, security headers, health              |
+| Layer        | Tool                     | What it covers                                                             |
+| ------------ | ------------------------ | -------------------------------------------------------------------------- |
+| Unit         | Vitest                   | `core/`, `game-adapters/` and `test-engine/`. Gated at 90% branch coverage |
+| Architecture | Vitest                   | Module boundaries, determinism, secret hygiene                             |
+| Integration  | Vitest + real PostgreSQL | Ownership, constraints, triggers, ingest idempotency, auth                 |
+| E2E          | Playwright               | Shell, auth screens, security headers, health, the engine harness          |
+
+The engine is tested through a **headless deterministic harness**: the real engine, driven by a
+scripted clock and a scripted input source with a recording renderer. That is what makes it
+possible to assert things a browser cannot be asked to do on demand — a frame delivered exactly
+140 ms late, or the same physical input replayed at 60 Hz and 240 Hz to prove the hit decision
+is identical (doc 19 §19.12).
+
+The browser layer covers only what needs a browser: real pointer lock, a real canvas, a real
+`requestAnimationFrame`. Run it by hand at `/lab/engine` — a development-only route that
+returns 404 in a production build.
 
 The effort is deliberately concentrated in `core/`. A bug there produces a plausible,
 confident, wrong number — nothing crashes and nothing looks broken — which is the failure mode

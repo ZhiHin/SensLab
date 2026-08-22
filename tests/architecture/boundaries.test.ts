@@ -112,6 +112,80 @@ describe("determinism", () => {
   });
 });
 
+describe("the test engine's React boundary — ADR-020, doc 19 §19.11", () => {
+  const engineFiles = sourceFiles.filter((file) => file.path.startsWith("src/test-engine/"));
+
+  it("has exactly one React-aware file", () => {
+    const reactAware = engineFiles.filter((file) =>
+      importSpecifiers(file.content).some(
+        (specifier) => specifier === "react" || specifier.startsWith("react/"),
+      ),
+    );
+    expect(reactAware.map((file) => file.path)).toEqual(["src/test-engine/mount.tsx"]);
+  });
+
+  it("keeps the framework out of the engine entirely", () => {
+    // A `next/*` import would tie the engine to a rendering framework and to a build. The
+    // engine has to be runnable from a plain Vitest process with no bundler at all, which is
+    // what makes the deterministic harness possible.
+    const offenders = engineFiles.flatMap((file) =>
+      importSpecifiers(file.content)
+        .filter((specifier) => specifier === "next" || specifier.startsWith("next/"))
+        .map((specifier) => `${file.path} -> ${specifier}`),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("touches the DOM only where the DOM is the subject", () => {
+    // Pointer lock, the canvas renderer and the React mount are the three files that may know
+    // a browser exists. Anywhere else, a `document` reference would mean the measurement
+    // pipeline had grown a dependency on the page it happens to be drawn on.
+    const allowed = new Set([
+      "src/test-engine/input/pointer-lock.ts",
+      "src/test-engine/render/renderer.ts",
+      "src/test-engine/timing/clock.ts",
+      "src/test-engine/mount.tsx",
+    ]);
+
+    const offenders = engineFiles
+      .filter((file) => !allowed.has(file.path))
+      .filter((file) =>
+        /\b(document|window|navigator)\.|\brequestAnimationFrame\b|\bperformance\.now\b/.test(
+          stripComments(file.content),
+        ),
+      )
+      .map((file) => file.path);
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("the lab harness never reaches production", () => {
+  it("guards the lab route group server-side", () => {
+    const layout = sourceFiles.find((file) => file.path === "src/app/(lab)/layout.tsx");
+    expect(layout, "the (lab) route group must have a layout that guards it").toBeDefined();
+
+    const body = stripComments(layout?.content ?? "");
+    // A hidden link is not a guard: the route must 404 before any client code is sent.
+    expect(body).toContain('process.env.NODE_ENV === "production"');
+    expect(body).toContain("notFound()");
+  });
+
+  it("is imported only from the lab route group", () => {
+    const offenders = sourceFiles
+      .filter(
+        (file) =>
+          !file.path.startsWith("src/app/(lab)/") && !file.path.startsWith("src/features/lab/"),
+      )
+      .flatMap((file) =>
+        importSpecifiers(file.content)
+          .filter((specifier) => specifier.includes("features/lab"))
+          .map((specifier) => `${file.path} -> ${specifier}`),
+      );
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("test fixtures never reach production code", () => {
   it("keeps the fixture adapter out of src/", () => {
     const offenders = sourceFiles.filter((file) =>

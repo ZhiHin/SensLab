@@ -55,8 +55,16 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
-      include: ["src/core/**/*.ts", "src/game-adapters/**/*.ts"],
-      exclude: ["**/*.d.ts", "**/index.ts", "**/contracts.ts", "**/*.types.ts"],
+      include: ["src/core/**/*.ts", "src/game-adapters/**/*.ts", "src/test-engine/**/*.ts"],
+      exclude: [
+        "**/*.d.ts",
+        "**/index.ts",
+        "**/contracts.ts",
+        "**/*.types.ts",
+        // mount.tsx is the React boundary: it needs a real DOM, and the Playwright harness
+        // covers it. Nothing below it is exempt.
+        "src/test-engine/mount.tsx",
+      ],
       // doc 02 §2.7 / doc 34 exit criteria: >= 90% branch coverage on the pure domain.
       thresholds: {
         branches: 90,

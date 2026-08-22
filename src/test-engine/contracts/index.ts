@@ -89,12 +89,31 @@ export interface TestDefinition {
   minValidTrials(mode: SessionMode): number;
   practiceTrialCount(mode: SessionMode): number;
 
+  /**
+   * How long a trial may run before it resolves.
+   *
+   * For the `duration` end condition this *is* the measured duration — a tracking trial ends
+   * when its time is up, not by timing out.
+   */
   readonly timeoutMs: number;
   readonly interTrialIntervalMs: { readonly min: number; readonly max: number };
   readonly endCondition: EndCondition;
   readonly shootingModel: ShootingModel;
   /** Minimum interval between accepted shots, where a test declares one. */
   readonly shotCooldownMs?: number;
+  /** Scored targets that must be destroyed before a `kill_count` trial resolves. */
+  readonly killTarget?: number;
+  /**
+   * Total mouse counts below which a timed-out trial is classified `no_input` rather than
+   * `timeout`. Distinguishing "did not try" from "tried and ran out of time" matters: both are
+   * procedural, but only one of them says anything about the stimulus.
+   */
+  readonly minMovementCounts?: number;
+  /**
+   * For `hold` tests, the fraction of the trial the fire button must be held before the trial
+   * counts as attempted (doc 09 §9.4).
+   */
+  readonly minHeldRatio?: number;
 
   /** Pure and seeded: the same rng and context must always yield the same targets. */
   spawn(rng: TestRng, context: TrialContext): readonly TargetSpec[];
@@ -136,14 +155,51 @@ export interface CandidateAssignment {
   readonly blindLabel: string;
 }
 
+/**
+ * The free-aim warm-up (SCR-014, doc 04 stage 6).
+ *
+ * Not a test and not a `TestDefinition`: it has no trials, no scoring and no metrics. It exists
+ * so the player's first contact with the camera is not also their first measured trial —
+ * first-contact learning is the largest single confound in a short session (`SENS-BR-011`).
+ */
+export interface FreeAimStage {
+  /** Target acquisitions before the continue control unlocks. */
+  readonly minAcquisitions: number;
+  readonly targetAngularRadiusDeg: number;
+  readonly minDistanceDeg: number;
+  readonly maxDistanceDeg: number;
+  /** The bracket centre. Never a candidate, so practice cannot advantage one (doc 09 §9.0.6). */
+  readonly countsPer360: CountsPer360;
+}
+
 export interface SessionPlan {
   readonly sessionId: string;
   readonly mode: SessionMode;
   readonly seed: string;
   readonly fovHorizontalHalfDeg: number;
+  /** Viewport aspect ratio, fixed for the session. A change mid-session flags it. */
+  readonly aspectRatio: number;
   readonly candidates: readonly CandidateAssignment[];
   readonly rounds: readonly PlannedRound[];
   readonly testConfigVersion: string;
+
+  /**
+   * Sensitivity for rounds that are not tied to a candidate — the reaction and 360 comfort
+   * tests, which measure something sensitivity-independent and would otherwise have no value
+   * to run at.
+   */
+  readonly baselineCountsPer360: CountsPer360;
+
+  /**
+   * Physical plausibility bound for the anti-manipulation check (doc 23 §23.10).
+   *
+   * Computed by the planner from the session DPI. Passing counts rather than DPI keeps the
+   * engine's only sensitivity concept `degreesPerCount`, which is DPI-independent by
+   * construction (doc 11 §11.1).
+   */
+  readonly maxImpliedCountsPerSecond: number;
+
+  readonly freeAim?: FreeAimStage;
 }
 
 /* ------------------------------------------------------------------ engine output */

@@ -139,3 +139,12 @@ test.describe("cross-site protection", () => {
     expect(response.status()).toBe(403);
   });
 });
+
+test.describe("the engineering harness never ships", () => {
+  test("returns 404 for the lab route in the production build", async ({ page }) => {
+    // The guard is a server-side notFound(), not a hidden link: a shipped harness would let
+    // anyone run a session against a synthetic definition on an unreviewed surface.
+    const response = await page.goto("/lab/engine");
+    expect(response?.status()).toBe(404);
+  });
+});
