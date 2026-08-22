@@ -9,3 +9,8 @@ src/db/migrations
 docs/phase-0
 pnpm-lock.yaml
 package-lock.json
+
+# Byte-exact fixtures. The golden session is asserted character for character
+# (`SENS-NFR-019`), so a formatter that rewrote it would break the very guarantee it exists to
+# provide — and would do so silently, on a run that touched nothing else.
+tests/unit/calibration/golden-session.json

@@ -13,29 +13,33 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 3 — MVP Aim Tests.** The project follows a phased plan defined in
+**Phase 4 — Calibration Engine.** The project follows a phased plan defined in
 [`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
 authentication, the pure-domain maths, the game-adapter contract, CI — the engine that runs an
-aim session, and the seven MVP tests it runs, with every metric doc 10 defines.
+aim session, the seven MVP tests with every metric doc 10 defines, and the statistical engine
+that turns those measurements into a response curve and a recommendation.
 
-**There is still no sensitivity recommendation.** Running a test measures how you perform at
-_one_ sensitivity, which is not a comparison. The calibration engine that compares several and
-recommends one is Phase 4.
+**The calibration is deterministic statistics, not AI** (`SENS-BR-002`). It is a noisy
+one-dimensional derivative-free search with a drift model, and it **refuses to invent a peak**:
+a flat or indistinguishable response returns a range and says why (`SENS-BR-017`).
 
-| Phase | Scope                                              | State                                                              |
-| ----- | -------------------------------------------------- | ------------------------------------------------------------------ |
-| 0     | Product and engineering specification              | Complete — [`docs/phase-0/`](docs/phase-0/)                        |
-| 1     | Application foundation                             | Complete — [report](docs/implementation/phase-1-completion.md)     |
-| **2** | **Aim test engine (Canvas, pointer lock, timing)** | **Complete** — [report](docs/implementation/phase-2-completion.md) |
-| 3     | The five MVP aim tests                             | Not started                                                        |
-| 4     | Calibration and statistical engine                 | Not started                                                        |
-| 5     | Verified game adapters                             | Not started                                                        |
-| 6     | Advanced aim tests                                 | Not started                                                        |
-| 7     | Results and Aim DNA                                | Not started                                                        |
-| 8     | Validation and fine-tuning                         | Not started                                                        |
-| 9     | Accounts, history, hardware profiles               | Not started                                                        |
-| 10    | UI/UX polish and the landing experience            | Not started                                                        |
-| 11    | Hardening and release readiness                    | Not started                                                        |
+**There is still no game conversion.** Turning a recommended sensitivity into a particular
+game's setting needs verified per-game constants, which is Phase 5.
+
+| Phase | Scope                                          | State                                                              |
+| ----- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| 0     | Product and engineering specification          | Complete — [`docs/phase-0/`](docs/phase-0/)                        |
+| 1     | Application foundation                         | Complete — [report](docs/implementation/phase-1-completion.md)     |
+| 2     | Aim test engine (Canvas, pointer lock, timing) | Complete — [report](docs/implementation/phase-2-completion.md)     |
+| 3     | The MVP aim tests and their metrics            | Complete — [report](docs/implementation/phase-3-completion.md)     |
+| **4** | **Calibration and statistical engine**         | **Complete** — [report](docs/implementation/phase-4-completion.md) |
+| 5     | Verified game adapters                         | Not started                                                        |
+| 6     | Advanced aim tests                             | Not started                                                        |
+| 7     | Results and Aim DNA                            | Not started                                                        |
+| 8     | Validation and fine-tuning                     | Not started                                                        |
+| 9     | Accounts, history, hardware profiles           | Not started                                                        |
+| 10    | UI/UX polish and the landing experience        | Not started                                                        |
+| 11    | Hardening and release readiness                | Not started                                                        |
 
 **There are no verified game conversions yet.** All five launch adapters are registered as
 unverified and refuse to emit a number — see [Game verification](#game-verification).
@@ -125,7 +129,9 @@ src/
     sensitivity/    cm/360 <-> counts <-> degrees, FOV, the ADS matching family
     metrics/        The metric registry (doc 10)
     params/         Versioned algorithm parameter sets
-    scoring/  calibration/  types/  random/
+    scoring/        Direction alignment, robust standardisation, the objective
+    calibration/    Bracket, candidates, counterbalancing, drift, response surface
+    types/  random/
   game-adapters/    The ONLY module that knows a game exists
   test-engine/      The aim engine. Runs outside React entirely
     timing/         Injected clock, frame-budget and hitch monitoring

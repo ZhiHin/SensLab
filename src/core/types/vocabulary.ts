@@ -173,7 +173,15 @@ export const CANDIDATE_SOURCES = tuple(
 );
 export type CandidateSource = (typeof CANDIDATE_SOURCES)[number];
 
-export const DRIFT_FORMS = tuple("spline", "linear_fallback");
+/**
+ * doc 13 §13.7 — which nuisance model was actually fitted.
+ *
+ * `none` is not a failure to try: within a single round every candidate occupies exactly one
+ * block, so drift and candidate are perfectly confounded and there is nothing to estimate.
+ * Recording that honestly is better than fitting a term the data cannot support, and the
+ * confidence model prices it.
+ */
+export const DRIFT_FORMS = tuple("spline", "linear_fallback", "none");
 export type DriftForm = (typeof DRIFT_FORMS)[number];
 
 /** doc 17 §17.3 — the only source of validation headline wording (`SENS-BR-016`). */

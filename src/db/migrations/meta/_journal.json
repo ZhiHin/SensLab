@@ -15,6 +15,13 @@
       "when": 1787383033611,
       "tag": "0001_trial_variant",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787402610727,
+      "tag": "0002_drift_form_none",
+      "breakpoints": true
     }
   ]
 }

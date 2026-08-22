@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import {
+  calibrationCandidates,
   roundMetrics,
   sessionQualityFlags,
   testDefinitions,
@@ -203,12 +204,31 @@ export async function ingestRoundAggregate(
   const definition = definitions[0];
   if (definition === undefined) throw notFound(`test definition "${aggregate.testKey}"`);
 
+  // Resolve the candidate this round belongs to. A calibration round without one would leave
+  // its trials unattributable to a sensitivity, which is the whole point of storing them.
+  let candidateId: string | null = null;
+  if (aggregate.candidateIndex !== null) {
+    const found = await tx
+      .select({ id: calibrationCandidates.id })
+      .from(calibrationCandidates)
+      .where(
+        and(
+          eq(calibrationCandidates.sessionId, sessionId),
+          eq(calibrationCandidates.candidateIndex, aggregate.candidateIndex),
+        ),
+      )
+      .limit(1);
+    const row = found[0];
+    if (row === undefined) throw notFound(`candidate ${aggregate.candidateIndex}`);
+    candidateId = row.id;
+  }
+
   const inserted = await tx
     .insert(testRounds)
     .values({
       id: newId(),
       sessionId,
-      candidateId: null,
+      candidateId,
       testDefinitionId: definition.id,
       scopeKey: aggregate.scopeKey,
       blockIndex: aggregate.blockIndex,
