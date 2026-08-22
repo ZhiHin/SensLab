@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deriveRng } from "@/core/random";
 import { countsPer360FromCm, degreesPerCount } from "@/core/sensitivity/canonical";
 import { INVALID_REASONS } from "@/core/types/vocabulary";
-import type { TrialContext } from "@/test-engine/contracts";
+import type { TrialIdentity } from "@/test-engine/contracts";
 import {
   createQualityMonitor,
   DEFAULT_QUALITY_THRESHOLDS,
@@ -31,7 +31,7 @@ import { createSyntheticDefinition } from "../../helpers/engine-harness";
 const DEG_PER_COUNT = degreesPerCount(countsPer360FromCm(30, 800));
 
 interface Rig extends TrialDependencies {
-  readonly context: TrialContext;
+  readonly context: TrialIdentity;
 }
 
 function createRig(): Rig {

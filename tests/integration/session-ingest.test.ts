@@ -63,6 +63,8 @@ function makeRound(presentationOrder: number, trialCount = 3): RoundAggregate {
       targetDistanceDeg: 18 + index,
       targetDirectionDeg: 45,
       stimulusSeed: `seed-${presentationOrder}-${index}`,
+      variant: null,
+      qualityFlags: [],
       quality: { cleanFrameFraction: 0.99, hitchCount: 0, bufferOverflow: false },
       metrics: {
         targetAcquisitionTime: 680 + index * 5,

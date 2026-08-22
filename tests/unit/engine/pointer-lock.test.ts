@@ -265,6 +265,39 @@ describe("requesting raw movement — EV-010", () => {
     expect(outcome.unadjustedMovementEffective).toBe(false);
   });
 
+  it("does not report a lost lock for a request that was refused — EV-010", async () => {
+    // Observed on a real platform: `requestPointerLock({unadjustedMovement:true})` rejects
+    // asynchronously, and that rejection fires `pointerlockerror`. The fallback plain request
+    // succeeds and the session starts — and then the queued error arrives. Treating it as a
+    // lock loss paused the session the instant it began, blaming an environment fault that
+    // never happened.
+    const dom = createFakeDom({ withOptions: "rejects" });
+    const source = build(dom);
+    const sink = createRecordingSink();
+    source.attach(sink);
+
+    const outcome = await source.requestLock();
+    expect(outcome.locked).toBe(true);
+
+    dom.emit("pointerlockerror");
+    expect(sink.locks).toEqual([]);
+  });
+
+  it("stops asking for an option the platform has already refused", async () => {
+    // The rejection arrives in a later microtask, which is where the user's transient
+    // activation has the least life left. Asking again on every request would spend each new
+    // click rediscovering the same refusal.
+    const dom = createFakeDom({ withOptions: "rejects" });
+    const source = build(dom);
+
+    await source.requestLock();
+    expect(dom.lockOptions).toHaveLength(1);
+
+    await source.requestLock();
+    // Still one: the second request went straight to the form that can succeed.
+    expect(dom.lockOptions).toHaveLength(1);
+  });
+
   it("forgets that raw input was effective once the lock is lost", async () => {
     const dom = createFakeDom();
     const source = build(dom);

@@ -11,8 +11,13 @@
 /** Consistency factor making MAD an unbiased estimator of σ for normally distributed data. */
 export const MAD_TO_SD = 1.4826;
 
-/** Bounds-checked element access. Cheap, and it turns an indexing bug into a loud failure. */
-export function el(values: readonly number[], index: number): number {
+/**
+ * Bounds-checked element access. Cheap, and it turns an indexing bug into a loud failure.
+ *
+ * Accepts any indexable series so the same reducers work on a plain array and on the typed
+ * arrays the engine's telemetry buffers hold, without copying a trial's worth of samples.
+ */
+export function el(values: ArrayLike<number>, index: number): number {
   const value = values[index];
   if (value === undefined) {
     throw new RangeError(`index ${index} is out of range (length ${values.length})`);
@@ -20,11 +25,11 @@ export function el(values: readonly number[], index: number): number {
   return value;
 }
 
-function assertNonEmpty(values: readonly number[], fn: string): void {
+function assertNonEmpty(values: ArrayLike<number>, fn: string): void {
   if (values.length === 0) throw new RangeError(`${fn}() requires at least one value`);
 }
 
-function assertAllFinite(values: readonly number[], fn: string): void {
+function assertAllFinite(values: ArrayLike<number>, fn: string): void {
   for (let i = 0; i < values.length; i += 1) {
     if (!Number.isFinite(el(values, i))) {
       throw new RangeError(`${fn}() received a non-finite value at index ${i}`);
@@ -32,7 +37,7 @@ function assertAllFinite(values: readonly number[], fn: string): void {
   }
 }
 
-export function mean(values: readonly number[]): number {
+export function mean(values: ArrayLike<number>): number {
   assertNonEmpty(values, "mean");
   assertAllFinite(values, "mean");
   let total = 0;
@@ -40,14 +45,14 @@ export function mean(values: readonly number[]): number {
   return total / values.length;
 }
 
-export function sum(values: readonly number[]): number {
+export function sum(values: ArrayLike<number>): number {
   let total = 0;
   for (let i = 0; i < values.length; i += 1) total += el(values, i);
   return total;
 }
 
 /** Sample variance (Bessel-corrected). Returns 0 for a single observation. */
-export function variance(values: readonly number[]): number {
+export function variance(values: ArrayLike<number>): number {
   assertNonEmpty(values, "variance");
   if (values.length === 1) return 0;
   const m = mean(values);
@@ -59,11 +64,11 @@ export function variance(values: readonly number[]): number {
   return acc / (values.length - 1);
 }
 
-export function standardDeviation(values: readonly number[]): number {
+export function standardDeviation(values: ArrayLike<number>): number {
   return Math.sqrt(variance(values));
 }
 
-export function rootMeanSquare(values: readonly number[]): number {
+export function rootMeanSquare(values: ArrayLike<number>): number {
   assertNonEmpty(values, "rootMeanSquare");
   assertAllFinite(values, "rootMeanSquare");
   let acc = 0;

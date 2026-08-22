@@ -5,7 +5,7 @@ import type { PlannedRound, RoundAggregate, SessionPlan, TestDefinition } from "
 import { createRoundRunner, type RoundProgress, type RoundRunner } from "./round-runner";
 import { placeTarget } from "./targets/placement";
 import type { MetricCollector } from "./telemetry/metric-collector";
-import type { TrialDependencies } from "./trial-manager";
+import type { TrialDependencies, TrialPhase } from "./trial-manager";
 
 /**
  * Stage sequencing, sensitivity switching, and pause/resume/abort (doc 19 §19.2–§19.3).
@@ -62,6 +62,14 @@ export interface SessionControllerOptions {
 
 export interface SessionController {
   readonly stage: SessionStage;
+  /**
+   * Phase of the trial currently open, or null between trials.
+   *
+   * Surfaced because the player has to be told when the measured window opens — a comfort
+   * attempt or a tracking hold cannot begin on a guess. It is a *procedural* state, not a
+   * score, so showing it does not compromise blinding (`SENS-BR-007`).
+   */
+  readonly trialPhase: TrialPhase | null;
   /** Rounds completed, for the HUD. */
   readonly completedRounds: number;
   readonly totalRounds: number;
@@ -138,21 +146,25 @@ export function createSessionController(options: SessionControllerOptions): Sess
     if (freeAim === undefined) return;
 
     const rng = deriveRng(plan.seed, "free-aim", freeAimAcquisitions);
-    const placement = placeTarget(rng, deps.camera.angles(), {
+    const anchor = deps.camera.angles();
+    const placement = placeTarget(rng, anchor, {
       minDistanceDeg: freeAim.minDistanceDeg,
       maxDistanceDeg: freeAim.maxDistanceDeg,
       minSeparationDeg: 0,
     });
 
+    // Placement works in absolute angles; a spec is an offset. Subtracting the anchor here is
+    // what makes the two meet, and the engine resolves it straight back to the same place.
     deps.targets.spawn(
       {
-        yawDeg: placement.position.yawDeg,
-        pitchDeg: placement.position.pitchDeg,
+        yawDeg: placement.position.yawDeg - anchor.yawDeg,
+        pitchDeg: placement.position.pitchDeg - anchor.pitchDeg,
         angularRadiusDeg: freeAim.targetAngularRadiusDeg,
         role: "scored",
       },
       { kind: "static" },
       now,
+      anchor,
     );
   };
 
@@ -219,6 +231,9 @@ export function createSessionController(options: SessionControllerOptions): Sess
     },
     get totalRounds() {
       return ordered.length;
+    },
+    get trialPhase() {
+      return runner?.activeTrial?.phase ?? null;
     },
     get aggregates() {
       return emitted;

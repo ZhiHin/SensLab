@@ -256,8 +256,11 @@ export async function ingestRoundAggregate(
     targetDistanceDeg: trial.targetDistanceDeg,
     targetDirectionDeg: trial.targetDirectionDeg,
     stimulusSeed: trial.stimulusSeed,
+    variant: trial.variant,
     cleanFrameFraction: trial.quality.cleanFrameFraction,
-    qualityFlags: trial.quality.bufferOverflow ? ["buffer_overflow"] : [],
+    // Every flag the engine raised, not just the one this layer happened to know about. A
+    // dropped flag is a session that looks cleaner than it was.
+    qualityFlags: [...trial.qualityFlags],
   }));
 
   if (trialRows.length > 0) await tx.insert(testTrials).values(trialRows);

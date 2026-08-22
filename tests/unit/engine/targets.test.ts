@@ -12,6 +12,9 @@ import {
 } from "@/test-engine/targets/placement";
 import { createTargetManager, isCrosshairOnTarget } from "@/test-engine/targets/target-manager";
 
+/** Targets are declared as offsets; these suites anchor them at the origin. */
+const ORIGINAL_ANCHOR = { yawDeg: 0, pitchDeg: 0 };
+
 /**
  * Target motion, placement and hit resolution (doc 19 §19.6).
  *
@@ -289,7 +292,7 @@ describe("hit resolution", () => {
 
   it("resolves a shot inside the radius and misses outside it", () => {
     const targets = createTargetManager();
-    targets.spawn(spec(), { kind: "static" }, 0);
+    targets.spawn(spec(), { kind: "static" }, 0, ORIGINAL_ANCHOR);
 
     expect(targets.resolveShot({ yawDeg: 20, pitchDeg: 0 }, 100).target).not.toBeNull();
     expect(targets.resolveShot({ yawDeg: 21.9, pitchDeg: 0 }, 100).target).not.toBeNull();
@@ -298,7 +301,7 @@ describe("hit resolution", () => {
 
   it("reports the near-miss distance, which is what a miss actually measures", () => {
     const targets = createTargetManager();
-    targets.spawn(spec(), { kind: "static" }, 0);
+    targets.spawn(spec(), { kind: "static" }, 0, ORIGINAL_ANCHOR);
 
     const resolution = targets.resolveShot({ yawDeg: 25, pitchDeg: 0 }, 100);
     expect(resolution.target).toBeNull();
@@ -317,7 +320,7 @@ describe("hit resolution", () => {
 
   it("never resolves a shot against a decoy", () => {
     const targets = createTargetManager();
-    targets.spawn(spec({ role: "decoy" }), { kind: "static" }, 0);
+    targets.spawn(spec({ role: "decoy" }), { kind: "static" }, 0, ORIGINAL_ANCHOR);
     const resolution = targets.resolveShot({ yawDeg: 20, pitchDeg: 0 }, 100);
     expect(resolution.target).toBeNull();
     // A decoy is not even the "nearest" thing, or a near-miss metric would count it.
@@ -326,7 +329,7 @@ describe("hit resolution", () => {
 
   it("ignores destroyed targets", () => {
     const targets = createTargetManager();
-    const target = targets.spawn(spec(), { kind: "static" }, 0);
+    const target = targets.spawn(spec(), { kind: "static" }, 0, ORIGINAL_ANCHOR);
     targets.destroy(target, 50);
 
     expect(targets.resolveShot({ yawDeg: 20, pitchDeg: 0 }, 100).target).toBeNull();
@@ -338,8 +341,18 @@ describe("hit resolution", () => {
 
   it("picks the target whose centre is closest when two overlap", () => {
     const targets = createTargetManager();
-    const far = targets.spawn(spec({ yawDeg: 22, angularRadiusDeg: 4 }), { kind: "static" }, 0);
-    const near = targets.spawn(spec({ yawDeg: 20, angularRadiusDeg: 4 }), { kind: "static" }, 0);
+    const far = targets.spawn(
+      spec({ yawDeg: 22, angularRadiusDeg: 4 }),
+      { kind: "static" },
+      0,
+      ORIGINAL_ANCHOR,
+    );
+    const near = targets.spawn(
+      spec({ yawDeg: 20, angularRadiusDeg: 4 }),
+      { kind: "static" },
+      0,
+      ORIGINAL_ANCHOR,
+    );
 
     const resolution = targets.resolveShot({ yawDeg: 20.2, pitchDeg: 0 }, 10);
     expect(resolution.target).toBe(near);
@@ -361,7 +374,7 @@ describe("hit resolution", () => {
 
     const run = (frameIntervalMs: number) => {
       const targets = createTargetManager();
-      const target = targets.spawn(spec({ angularRadiusDeg: 1.5 }), pattern, 0);
+      const target = targets.spawn(spec({ angularRadiusDeg: 1.5 }), pattern, 0, ORIGINAL_ANCHOR);
       // Drive frames the way the engine would; they must not affect the answer.
       for (let t = 0; t < clickAt; t += frameIntervalMs) targets.positionAt(target, t);
       return targets.resolveShot({ yawDeg: 24.4, pitchDeg: 0 }, clickAt);
@@ -379,7 +392,12 @@ describe("hit resolution", () => {
 
   it("tracks whether the crosshair is on target without a shot being fired", () => {
     const targets = createTargetManager();
-    const target = targets.spawn(spec({ angularRadiusDeg: 3 }), { kind: "static" }, 0);
+    const target = targets.spawn(
+      spec({ angularRadiusDeg: 3 }),
+      { kind: "static" },
+      0,
+      ORIGINAL_ANCHOR,
+    );
 
     expect(isCrosshairOnTarget(targets, target, { yawDeg: 20, pitchDeg: 2 }, 100)).toBe(true);
     expect(isCrosshairOnTarget(targets, target, { yawDeg: 20, pitchDeg: 4 }, 100)).toBe(false);
@@ -390,7 +408,7 @@ describe("hit resolution", () => {
 
   it("clears every target on reset so trials cannot leak into each other", () => {
     const targets = createTargetManager();
-    targets.spawn(spec(), { kind: "static" }, 0);
+    targets.spawn(spec(), { kind: "static" }, 0, ORIGINAL_ANCHOR);
     targets.reset();
     expect(targets.all()).toHaveLength(0);
     expect(targets.livingCount).toBe(0);

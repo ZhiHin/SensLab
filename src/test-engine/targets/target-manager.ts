@@ -26,7 +26,16 @@ import { evaluateMotion } from "./motion";
 
 export interface LiveTarget {
   readonly id: number;
+  /** The declaration, as the test wrote it: an offset from the camera at spawn. */
   readonly spec: TargetSpec;
+  /**
+   * The absolute orientation the offset resolved to, fixed at spawn.
+   *
+   * Kept separately from the spec so the record still shows what the test asked for while the
+   * hit test works in world coordinates. Resolving once at spawn is what makes the target stay
+   * put while the player turns towards it.
+   */
+  readonly origin: Angles;
   readonly motion: MotionPattern;
   /** Engine time at which this target appeared. */
   readonly spawnedAt: number;
@@ -45,7 +54,8 @@ export interface HitResolution {
 }
 
 export interface TargetManager {
-  spawn(spec: TargetSpec, motion: MotionPattern, atTime: number): LiveTarget;
+  /** `anchor` is the camera orientation the spec's offset is measured from. */
+  spawn(spec: TargetSpec, motion: MotionPattern, atTime: number, anchor: Angles): LiveTarget;
   /** Position of a target at an exact instant. */
   positionAt(target: LiveTarget, atTime: number): Angles;
   /** Every target still alive, in spawn order. */
@@ -63,6 +73,12 @@ export interface TargetManager {
   readonly livingCount: number;
 }
 
+/** Targets stay inside the band where equal angles cost equal hand movement (doc 09 §9.0.1). */
+const MAX_ORIGIN_PITCH_DEG = 40;
+
+const clampPitch = (pitchDeg: number): number =>
+  Math.min(MAX_ORIGIN_PITCH_DEG, Math.max(-MAX_ORIGIN_PITCH_DEG, pitchDeg));
+
 export function createTargetManager(): TargetManager {
   const active: LiveTarget[] = [];
   let nextId = 1;
@@ -74,10 +90,16 @@ export function createTargetManager(): TargetManager {
       return count;
     },
 
-    spawn(spec, motion, atTime) {
+    spawn(spec, motion, atTime, anchor) {
       const target: LiveTarget = {
         id: nextId,
         spec,
+        // Pitch is clamped to the band targets are allowed to occupy, matching placement:
+        // beyond it a fixed yaw change costs a different amount of physical movement.
+        origin: {
+          yawDeg: anchor.yawDeg + spec.yawDeg,
+          pitchDeg: clampPitch(anchor.pitchDeg + spec.pitchDeg),
+        },
         motion,
         spawnedAt: atTime,
         alive: true,
@@ -89,8 +111,7 @@ export function createTargetManager(): TargetManager {
     },
 
     positionAt(target, atTime) {
-      const origin: Angles = { yawDeg: target.spec.yawDeg, pitchDeg: target.spec.pitchDeg };
-      return evaluateMotion(target.motion, origin, atTime - target.spawnedAt).position;
+      return evaluateMotion(target.motion, target.origin, atTime - target.spawnedAt).position;
     },
 
     living() {

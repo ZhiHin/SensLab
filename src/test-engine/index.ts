@@ -16,3 +16,6 @@ export * from "./targets/target-manager";
 export * from "./telemetry/ring-buffer";
 export * from "./telemetry/metric-collector";
 export * from "./quality/quality-monitor";
+export * from "./metrics";
+export * from "./plan";
+export * from "./tests";

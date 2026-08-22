@@ -254,6 +254,14 @@ export const testTrials = pgTable(
     targetDirectionDeg: doublePrecision("target_direction_deg"),
     /** Reproduces the exact stimulus this trial presented (`SENS-BR-031`). */
     stimulusSeed: text("stimulus_seed").notNull(),
+    /**
+     * What this trial presented, where the test has more than one kind of trial.
+     *
+     * Null for tests whose trials are all the same. The comfort test's three sub-tasks measure
+     * genuinely different quantities, and an analysis that could not tell them apart would
+     * average a swipe distance against a return error.
+     */
+    variant: text("variant"),
     cleanFrameFraction: real("clean_frame_fraction").notNull(),
     qualityFlags: text("quality_flags")
       .array()

@@ -1,6 +1,13 @@
 import type { Angles } from "../core/geometry/angular";
 import type { InvalidReason, TrialValidity } from "../core/types/vocabulary";
-import type { MotionPattern, TargetSpec, TestDefinition, TestRng, TrialContext } from "./contracts";
+import type {
+  MotionPattern,
+  TargetSpec,
+  TestDefinition,
+  TestRng,
+  TrialContext,
+  TrialIdentity,
+} from "./contracts";
 import type { Camera } from "./render/camera";
 import type { QualityMonitor } from "./quality/quality-monitor";
 import type { FrameMonitor, FrameWindowStats } from "./timing/frame-monitor";
@@ -55,6 +62,10 @@ export interface TrialOutcome {
   readonly totalCounts: number;
   /** Fraction of the measured window with the fire button held (`hold` tests). */
   readonly heldRatio: number;
+  /** What this trial presented, where the test has more than one kind of trial. */
+  readonly variant: string | null;
+  /** Scored targets destroyed during the measured window. */
+  readonly kills: number;
 }
 
 export interface TrialDependencies {
@@ -84,7 +95,7 @@ export interface TrialRunner {
 
 export interface TrialRunnerOptions {
   readonly definition: TestDefinition;
-  readonly context: TrialContext;
+  readonly context: TrialIdentity;
   readonly rng: TestRng;
   readonly deps: TrialDependencies;
   readonly startedAt: number;
@@ -121,10 +132,12 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
 
   const spawned: TargetSpec[] = [];
   let motion: MotionPattern = { kind: "static" };
+  let variant: string | null = null;
 
   const killTarget = definition.killTarget ?? 1;
   const minMovementCounts = definition.minMovementCounts ?? DEFAULT_MIN_MOVEMENT_COUNTS;
   const minHeldRatio = definition.minHeldRatio ?? 0.7;
+  const minKills = definition.minKills ?? 0;
 
   const presentStimulus = (now: number): void => {
     phase = "active";
@@ -137,15 +150,10 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
     quality.openTrial();
     totalCounts = 0;
 
-    motion = definition.motionFor(rng, context);
-    const specs = definition.spawn(rng, context);
-
-    for (const spec of specs) {
-      spawned.push(spec);
-      const target = targets.spawn(spec, spec.role === "reset" ? { kind: "static" } : motion, now);
-      if (spec.role === "reset") resetTargetsRemaining += 1;
-      else if (primaryTarget === null && spec.role === "scored") primaryTarget = target;
-    }
+    const hookContext = contextAt();
+    motion = definition.motionFor(rng, hookContext);
+    variant = definition.variantFor?.(rng, hookContext) ?? null;
+    presentTargets(definition.spawn(rng, hookContext), now);
 
     // A reset target gates the measured window: until it is cleared, the trial is positioning,
     // not measuring.
@@ -153,6 +161,34 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
       stimulusAt = null;
     }
   };
+
+  /**
+   * Resolves declared offsets into live targets.
+   *
+   * Every spec is an offset from wherever the camera is *now*, so this is the one place the
+   * relative declaration meets the live view (doc 09 §9.0.1).
+   */
+  const presentTargets = (specs: readonly TargetSpec[], now: number): void => {
+    const anchor = camera.angles();
+    for (const spec of specs) {
+      spawned.push(spec);
+      const target = targets.spawn(
+        spec,
+        spec.role === "reset" ? { kind: "static" } : motion,
+        now,
+        anchor,
+      );
+      if (spec.role === "reset") resetTargetsRemaining += 1;
+      else if (primaryTarget === null && spec.role === "scored") primaryTarget = target;
+    }
+  };
+
+  /** The context handed to a definition's hooks: live camera, live kill count. */
+  const contextAt = (): TrialContext => ({
+    ...context,
+    cameraAngles: camera.angles(),
+    killIndex: kills,
+  });
 
   const openMeasuredWindow = (now: number): void => {
     stimulusAt = now;
@@ -202,6 +238,8 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
       qualityFlags,
       totalCounts,
       heldRatio,
+      variant,
+      kills,
     };
 
     phase = "resolved";
@@ -236,7 +274,11 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
     }
 
     if (timedOut && !isSatisfied()) {
-      return totalCounts < minMovementCounts ? "no_input" : "timeout";
+      if (totalCounts < minMovementCounts) return "no_input";
+      // A kill-count test that timed out short of its floor was not attempted. The floor sits
+      // far below any plausible genuine attempt, so this stays procedural (doc 09 §9.5).
+      if (definition.endCondition === "kill_count" && kills < minKills) return "insufficient_kills";
+      return "timeout";
     }
 
     return null;
@@ -310,7 +352,10 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
 
     onMove(t: number, dx: number, dy: number): void {
       quality.observeMovement(t, dx, dy);
-      camera.applyCounts(dx, dy);
+      // The reaction test ignores movement: a camera that moved would let the player pre-aim
+      // and turn a reaction measurement into an aiming one. The sample is still recorded, so
+      // premature movement stays detectable.
+      if (definition.cameraEnabled !== false) camera.applyCounts(dx, dy);
 
       const angles = camera.angles();
       buffers.recordInput(t, angles.yawDeg, angles.pitchDeg);
@@ -374,6 +419,9 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
         hit = true;
         kills += 1;
         targets.destroy(resolution.target, t);
+        if (definition.respawn !== undefined && !isSatisfied()) {
+          presentTargets(definition.respawn(rng, contextAt()), t);
+        }
       } else if (hit === null) {
         hit = false;
       }

@@ -6,6 +6,7 @@ import { createEngine, type Engine, type EngineState } from "./engine";
 import { createPointerLockInput } from "./input/pointer-lock";
 import { coloursFromDocument, createRenderer } from "./render/renderer";
 import type { PauseReason, SessionStage } from "./session-controller";
+import type { TrialPhase } from "./trial-manager";
 import { createBrowserClock } from "./timing/clock";
 import type { SessionQualityFlag } from "../core/types/vocabulary";
 
@@ -59,6 +60,13 @@ export interface AimEngineHandle {
   /** Coarse stage, updated at stage boundaries only. */
   readonly stage: SessionStage;
   readonly pauseReason: PauseReason | null;
+  /**
+   * Phase of the open trial, or null between trials.
+   *
+   * Procedural state, never a score — the surface has to be able to say "get ready" versus
+   * "measuring", and a player asked to hold a tracking button cannot begin on a guess.
+   */
+  readonly trialPhase: TrialPhase | null;
   readonly qualityFlags: readonly SessionQualityFlag[];
   /** Whether the free-aim warm-up minimum has been met. */
   readonly freeAimSatisfied: boolean;
@@ -91,6 +99,7 @@ export function useAimEngine(options: UseAimEngineOptions): AimEngineHandle {
 
   const [state, setState] = useState<EngineState>("idle");
   const [stage, setStage] = useState<SessionStage>(IDLE_STAGE);
+  const [trialPhase, setTrialPhase] = useState<TrialPhase | null>(null);
   const [pauseReason, setPauseReason] = useState<PauseReason | null>(null);
   const [qualityFlags, setQualityFlags] = useState<readonly SessionQualityFlag[]>([]);
 
@@ -121,6 +130,7 @@ export function useAimEngine(options: UseAimEngineOptions): AimEngineHandle {
         onStageChange: (next) => {
           setStage(next);
           setState(engine.state);
+          setTrialPhase(engine.trialPhase);
           if (next.kind === "paused") setPauseReason(next.reason);
           else if (next.kind === "round") setPauseReason(null);
         },
@@ -194,6 +204,7 @@ export function useAimEngine(options: UseAimEngineOptions): AimEngineHandle {
     state,
     stage,
     pauseReason,
+    trialPhase,
     qualityFlags,
     // Derived from the stage rather than read off the engine: the stage is state, so the
     // "Continue" control re-enables on the acquisition that satisfies the minimum. Reading the

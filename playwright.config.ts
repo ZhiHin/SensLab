@@ -27,6 +27,7 @@ export default defineConfig({
   // want locally.
   ...(isCi ? { workers: 1 } : {}),
   reporter: isCi ? [["github"], ["html", { open: "never" }]] : "list",
+  globalSetup: "./tests/e2e/global-setup.ts",
   timeout: 30_000,
   expect: { timeout: 5_000 },
 
@@ -36,24 +37,36 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
+  /*
+   * Three projects, and the split is driven by one property of the engine rather than by
+   * convenience: **a session pauses when its page loses focus**, because a session running in a
+   * background tab is not measuring anything. Parallel browser pages compete for focus, so
+   * anything that holds pointer lock has to run alone.
+   *
+   * So: everything that does not hold pointer lock runs in parallel first, then the locked
+   * specs run one at a time, then the dev-only harness does the same.
+   */
   projects: [
     {
       name: "chromium",
-      testIgnore: /lab\..*\.spec\.ts$/,
+      testIgnore: [/lab\..*\.spec\.ts$/, /\.locked\.spec\.ts$/],
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      // Shipping surfaces that hold pointer lock. Production build, one at a time.
+      name: "locked",
+      testMatch: /\.locked\.spec\.ts$/,
+      dependencies: ["chromium"],
+      fullyParallel: false,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       // The engine harness is a development-only route: in the production build it 404s, which
       // the chromium project asserts. Driving it needs the dev server, so it gets its own
-      // project pointed at a second origin.
-      //
-      // It runs alone, and that is a consequence of the engine being correct rather than a
-      // workaround: a session whose page loses focus pauses itself, because a session running
-      // in a background tab is not measuring anything. Parallel pages compete for focus, so
-      // these tests wait for every other project and then run one at a time.
+      // project pointed at a second origin — and, holding pointer lock, its own turn.
       name: "lab",
       testMatch: /lab\..*\.spec\.ts$/,
-      dependencies: ["chromium"],
+      dependencies: ["locked"],
       fullyParallel: false,
       use: { ...devices["Desktop Chrome"], baseURL: DEV_URL },
     },

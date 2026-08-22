@@ -89,6 +89,16 @@ html {
   background-color: var(--color-void);
   /* Native scrolling is never hijacked (FR-102). */
   scroll-behavior: smooth;
+  /*
+   * Reserve the scrollbar gutter always.
+   *
+   * This is a measurement concern, not a cosmetic one. Without it, content growing or shrinking
+   * past the viewport height makes the scrollbar appear or disappear, which changes the layout
+   * width — and therefore the canvas width. The engine treats a canvas resize as a change to the
+   * angular-to-pixel mapping and pauses the session, correctly. A page that reflowed when a
+   * button unmounted would pause the test the moment it started.
+   */
+  scrollbar-gutter: stable;
 }
 
 body {

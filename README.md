@@ -13,14 +13,14 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 2 — Aim Test Engine.** The project follows a phased plan defined in
+**Phase 3 — MVP Aim Tests.** The project follows a phased plan defined in
 [`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
-authentication, the pure-domain maths, the game-adapter contract, CI — plus the engine that
-runs an aim session: an angular camera, pointer lock, analytic target motion, the trial state
-machine, frame-quality monitoring and a headless deterministic harness.
+authentication, the pure-domain maths, the game-adapter contract, CI — the engine that runs an
+aim session, and the seven MVP tests it runs, with every metric doc 10 defines.
 
-**No aim tests exist yet.** The engine runs whatever `TestDefinition` it is handed; the seven
-real ones are Phase 3.
+**There is still no sensitivity recommendation.** Running a test measures how you perform at
+_one_ sensitivity, which is not a comparison. The calibration engine that compares several and
+recommends one is Phase 4.
 
 | Phase | Scope                                              | State                                                              |
 | ----- | -------------------------------------------------- | ------------------------------------------------------------------ |
@@ -121,6 +121,7 @@ src/
   repositories/     ALL SQL. Every function takes an ActorContext
   core/             PURE DOMAIN. No React, no Next, no database, no I/O
     statistics/     median, MAD, Wilson, weighted least squares, spline, bootstrap
+    signal/         High-pass filter, zero-crossing rate, reversal counting
     sensitivity/    cm/360 <-> counts <-> degrees, FOV, the ADS matching family
     metrics/        The metric registry (doc 10)
     params/         Versioned algorithm parameter sets
@@ -133,6 +134,9 @@ src/
     targets/        Seeded placement, analytic motion, hit resolution
     telemetry/      Pre-allocated ring buffers, the metric-derivation seam
     quality/        Environmental classification. Never touches a measurement
+    tests/          The seven MVP test declarations. Data plus pure hooks
+    metrics/        Every metric doc 10 defines, plus round aggregation
+    plan/           Plans that run one test on its own
     mount.tsx       The ONLY React-aware file in the engine
   db/               Drizzle schema, migrations, SQL, seed
   lib/              env, errors, logger, crypto, email
@@ -244,9 +248,14 @@ possible to assert things a browser cannot be asked to do on demand — a frame 
 140 ms late, or the same physical input replayed at 60 Hz and 240 Hz to prove the hit decision
 is identical (doc 19 §19.12).
 
+Metrics are tested against **hand-written movement traces** whose answers are known by hand.
+That is the only way to show a metric computes the formula doc 10 defines rather than a
+plausible neighbour — and a plausible neighbour is exactly what a metric bug looks like, because
+nothing crashes and every number stays in range.
+
 The browser layer covers only what needs a browser: real pointer lock, a real canvas, a real
-`requestAnimationFrame`. Run it by hand at `/lab/engine` — a development-only route that
-returns 404 in a production build.
+`requestAnimationFrame`. The shipping surfaces are at `/test`; `/lab/engine` is a
+development-only harness that returns 404 in a production build.
 
 The effort is deliberately concentrated in `core/`. A bug there produces a plausible,
 confident, wrong number — nothing crashes and nothing looks broken — which is the failure mode

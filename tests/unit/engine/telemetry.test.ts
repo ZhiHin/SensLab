@@ -151,6 +151,7 @@ describe("metric collector", () => {
     return {
       trialIndex: 2,
       isPractice: false,
+      variant: null,
       stimulusAt: 1000,
       resolvedAt: 1450,
       inputSamples: buffers.input(),
@@ -161,6 +162,7 @@ describe("metric collector", () => {
       targetManager: createTargetManager(),
       shots: 1,
       hit: true,
+      firstShotHit: true,
       quality: { cleanFrameFraction: 1, hitchCount: 0, bufferOverflow: false },
     };
   };
@@ -231,6 +233,8 @@ describe("metric collector", () => {
         isReplacement: false,
         startOffsetMs: 500,
         stimulusSeed: "round-1:2",
+        variant: null,
+        qualityFlags: [],
         targetAngularRadiusDeg: 2,
         targetDistanceDeg: 18,
         targetDirectionDeg: 0,

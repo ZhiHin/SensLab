@@ -160,6 +160,83 @@ describe("the test engine's React boundary — ADR-020, doc 19 §19.11", () => {
   });
 });
 
+describe("a test is data, not code — doc 19 §19.9", () => {
+  const definitionFiles = sourceFiles.filter(
+    (file) => file.path.startsWith("src/test-engine/tests/") && !file.path.endsWith("index.ts"),
+  );
+
+  it("has a definition file for every MVP test", () => {
+    expect(definitionFiles.length).toBeGreaterThanOrEqual(7);
+  });
+
+  it("never lets a definition reach into the lifecycle it is run by", () => {
+    // The claim doc 19 §19.9 makes is that spawning, timing, validity and buffering are engine
+    // responsibilities, so adding a test is a new declaration rather than an edit to lifecycle
+    // code. A definition that imported the trial manager or the camera could quietly take one
+    // of those responsibilities back, and the claim would stop being true without anything
+    // failing.
+    const forbidden = [
+      "trial-manager",
+      "round-runner",
+      "session-controller",
+      "engine",
+      "render/camera",
+      "render/renderer",
+      "telemetry/",
+      "timing/",
+      "input/",
+    ];
+
+    const offenders = definitionFiles.flatMap((file) =>
+      importSpecifiers(file.content)
+        .filter((specifier) => forbidden.some((fragment) => specifier.includes(fragment)))
+        .map((specifier) => `${file.path} -> ${specifier}`),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps player-facing copy out of the definitions", () => {
+    // Definitions carry i18n keys. A literal sentence here would be a string the Chinese build
+    // cannot translate, and it would live in the one layer that is meant to be pure data.
+    const offenders: string[] = [];
+    for (const file of definitionFiles) {
+      const body = stripComments(file.content);
+      for (const match of body.matchAll(/(instructionsKey|displayNameKey):\s*"([^"]*)"/g)) {
+        const value = match[2] ?? "";
+        if (!/^test\.[a-z0-9]+\.[A-Za-z]+$/.test(value)) {
+          offenders.push(`${file.path}: ${match[1]} = "${value}"`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("metric derivations stay pure — doc 10", () => {
+  const metricFiles = sourceFiles.filter((file) =>
+    file.path.startsWith("src/test-engine/metrics/"),
+  );
+
+  it("has derivation modules to check", () => {
+    expect(metricFiles.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("reads the trial and nothing else", () => {
+    // A derivation is a pure function of a trial's observations. Reaching for the clock or the
+    // camera would let a metric depend on when it happened to be computed, which would make
+    // the same trial produce different numbers on re-analysis.
+    const offenders = metricFiles.flatMap((file) =>
+      importSpecifiers(file.content)
+        .filter((specifier) =>
+          /timing\/|render\/camera|session-controller|round-runner/.test(specifier),
+        )
+        .map((specifier) => `${file.path} -> ${specifier}`),
+    );
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("the lab harness never reaches production", () => {
   it("guards the lab route group server-side", () => {
     const layout = sourceFiles.find((file) => file.path === "src/app/(lab)/layout.tsx");

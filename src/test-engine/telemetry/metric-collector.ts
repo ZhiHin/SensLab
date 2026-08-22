@@ -24,6 +24,14 @@ import type { EventView, SampleView } from "./ring-buffer";
 export interface TrialObservation {
   readonly trialIndex: number;
   readonly isPractice: boolean;
+  /**
+   * What this trial presented, where the test has more than one kind of trial.
+   *
+   * Supplied so a derivation never has to infer the task from the trial index — the comfort
+   * test's three sub-tasks measure genuinely different things, and a derivation that guessed
+   * wrong would produce a confident number for the wrong quantity.
+   */
+  readonly variant: string | null;
   /** Engine time at which the stimulus was presented. */
   readonly stimulusAt: number;
   /** Engine time at which the trial resolved. */
@@ -41,6 +49,8 @@ export interface TrialObservation {
   /** Shots taken, and whether the trial ended in a hit. */
   readonly shots: number;
   readonly hit: boolean | null;
+  /** Whether the trial's first button press was a hit. Null when no shot was fired. */
+  readonly firstShotHit: boolean | null;
   readonly quality: TrialQuality;
 }
 
@@ -119,6 +129,8 @@ export function toTrialRecord(
     | "isReplacement"
     | "startOffsetMs"
     | "stimulusSeed"
+    | "variant"
+    | "qualityFlags"
     | "targetAngularRadiusDeg"
     | "targetDistanceDeg"
     | "targetDirectionDeg"
@@ -138,6 +150,8 @@ export function toTrialRecord(
     targetDistanceDeg: fields.targetDistanceDeg,
     targetDirectionDeg: fields.targetDirectionDeg,
     stimulusSeed: fields.stimulusSeed,
+    variant: fields.variant,
+    qualityFlags: fields.qualityFlags,
     quality: observation.quality,
     metrics,
   };

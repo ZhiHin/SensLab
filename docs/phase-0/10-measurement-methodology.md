@@ -133,16 +133,25 @@ targetAcquisitionTime = movementOnsetTime + ballisticTime + correctionTime + tri
 
 ### `overshootRate`
 - **Unit:** proportion 0–1. **Direction:** lower is better.
-- **Definition:** a trial **overshoots** if, before the crosshair first enters the target,
-  *p*(*t*) exceeds *d₀* + *r* at any point.
+- **Definition:** a trial **overshoots** if *p*(*t*) exceeds *d₀* + *r* at any point during the
+  engagement — from *t₀* until the target is destroyed, or until the trial resolves if it never
+  was.
 - **Tests:** Flick, Micro, Switching, Speed, Wide Flick.
+
+> **Corrected in Phase 3.** This originally read "before the crosshair first enters the target".
+> That wording is vacuous for the case it exists to detect: a crosshair travelling towards a
+> target reaches *d₀* − *r* (entry) **before** it reaches *d₀* + *r*, so a straight-line
+> overshoot — the canonical signature this metric describes in its own Interpretation — could
+> never satisfy it. Bounding the window at the kill rather than at first entry keeps the metric
+> non-vacuous while still preventing later movement, in a multi-kill test such as Switching,
+> from being counted against the first engagement.
 - **Interpretation:** **the canonical signature of excessive sensitivity.** A sensitivity that is
   too high for a player produces systematic overshoot before it produces anything else.
 
 ### `overshootMagnitudeNorm`
 - **Unit:** dimensionless. **Direction:** lower is better.
-- **Definition:** (max *p*(*t*) before first target entry − *d₀*) / *r*, evaluated only on
-  overshooting trials; 0 otherwise.
+- **Definition:** (max *p*(*t*) during the engagement − (*d₀* + *r*)) / *r*, evaluated only on
+  overshooting trials; 0 otherwise. Window as corrected for `overshootRate` above.
 - **Interpretation:** distinguishes "slightly past" from "wildly past". Reported alongside the
   rate, because rate alone conflates them.
 

@@ -11,6 +11,9 @@ import {
 } from "@/test-engine/render/renderer";
 import { createTargetManager } from "@/test-engine/targets/target-manager";
 
+/** Targets are declared as offsets; these suites anchor them at the origin. */
+const ORIGINAL_ANCHOR = { yawDeg: 0, pitchDeg: 0 };
+
 /**
  * The Canvas 2D renderer (ADR-005, doc 19 §19.13, `SENS-BR-021`).
  *
@@ -157,6 +160,7 @@ describe("the restricted effect set", () => {
       { yawDeg: 10, pitchDeg: 0, angularRadiusDeg: 2, role: "scored" },
       { kind: "static" },
       0,
+      ORIGINAL_ANCHOR,
     );
 
     renderer.draw({ now: 100, camera, targets, hud: ROUND_HUD, feedback: [] });
@@ -240,6 +244,7 @@ describe("what gets drawn", () => {
       { yawDeg: 170, pitchDeg: 0, angularRadiusDeg: 2, role: "scored" },
       { kind: "static" },
       0,
+      ORIGINAL_ANCHOR,
     );
 
     renderer.draw({ now: 0, camera, targets, hud: IDLE_HUD, feedback: [] });
@@ -263,6 +268,7 @@ describe("what gets drawn", () => {
         phase: 0,
       },
       0,
+      ORIGINAL_ANCHOR,
     );
 
     const xAt = (now: number): number => {

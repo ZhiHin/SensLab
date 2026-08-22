@@ -17,6 +17,7 @@ import {
   type SessionStage,
 } from "./session-controller";
 import { createTargetManager } from "./targets/target-manager";
+import type { TrialPhase } from "./trial-manager";
 import { createTelemetryBuffers, sizeBuffers } from "./telemetry/ring-buffer";
 import type { MetricCollector } from "./telemetry/metric-collector";
 import type { Clock } from "./timing/clock";
@@ -65,6 +66,8 @@ export interface EngineOptions {
 export interface Engine {
   readonly state: EngineState;
   readonly stage: SessionStage;
+  /** Phase of the open trial, or null between trials. Procedural state, never a score. */
+  readonly trialPhase: TrialPhase | null;
   readonly camera: Camera;
   readonly hud: HudModel;
   readonly aggregates: readonly RoundAggregate[];
@@ -284,6 +287,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     get stage() {
       return controller.stage;
+    },
+    get trialPhase() {
+      return controller.trialPhase;
     },
     get camera() {
       return camera;

@@ -60,6 +60,23 @@ export function createPointerLockInput(options: PointerLockInputOptions): InputS
 
   let sink: InputSink | null = null;
   let unadjustedEffective = false;
+  /**
+   * Whether this source currently believes it holds the lock.
+   *
+   * Tracked from both the request outcome and the change event, because the two can disagree:
+   * a browser that grants a lock without firing a change event would otherwise leave the source
+   * unable to recognise the loss when it comes.
+   */
+  let hasLock = false;
+  /**
+   * Set once the platform has refused `unadjustedMovement`.
+   *
+   * Asking again on every request costs a round trip through a rejected promise, and — worse —
+   * that rejection arrives in a later microtask, which is where the transient activation from
+   * the user's click has the least life left. Remembering the refusal means the second and
+   * subsequent requests go straight to the request that can actually succeed (**EV-010**).
+   */
+  let unadjustedRefused = false;
   let devicePixelRatio = view?.devicePixelRatio ?? 1;
   let lastWidth = element.clientWidth;
   let lastHeight = element.clientHeight;
@@ -119,11 +136,25 @@ export function createPointerLockInput(options: PointerLockInputOptions): InputS
   const onLockChange = (): void => {
     const locked = isLocked();
     if (!locked) unadjustedEffective = false;
+    // Only transitions are reported. Browsers fire this event for their own reasons, and a
+    // repeated "still not locked" must not read as a fresh loss.
+    if (locked === hasLock) return;
+    hasLock = locked;
     sink?.onLockChange(locked);
   };
 
   const onLockError = (): void => {
+    // **The document is the authority, not this event.**
+    //
+    // Observed on a real platform (EV-010): the `unadjustedMovement` request rejects
+    // asynchronously and fires `pointerlockerror`, while the plain fallback request has
+    // already succeeded. The error belongs to a request that has been superseded. Treating it
+    // as a loss paused the session the instant it began, blaming an environment fault that
+    // never happened — and a lock that was never held cannot be lost either.
+    if (isLocked()) return;
     unadjustedEffective = false;
+    if (!hasLock) return;
+    hasLock = false;
     sink?.onLockChange(false);
   };
 
@@ -211,7 +242,7 @@ export function createPointerLockInput(options: PointerLockInputOptions): InputS
         };
       }
 
-      if (wantsUnadjusted) {
+      if (wantsUnadjusted && !unadjustedRefused) {
         try {
           const result = element.requestPointerLock({ unadjustedMovement: true });
           // Browsers that support the options bag return a promise; older ones return
@@ -219,6 +250,7 @@ export function createPointerLockInput(options: PointerLockInputOptions): InputS
           if (result !== undefined) {
             await result;
             unadjustedEffective = isLocked();
+            hasLock = isLocked();
             return {
               locked: isLocked(),
               unadjustedMovementRequested: true,
@@ -231,9 +263,13 @@ export function createPointerLockInput(options: PointerLockInputOptions): InputS
         } catch (error: unknown) {
           unadjustedEffective = false;
           const reason = error instanceof Error ? error.name : "unknown";
+          // Remember the refusal so the next attempt does not spend its activation discovering
+          // the same thing again.
+          unadjustedRefused = true;
           // Fall through to a plain request: a refusal of the *option* must not cost the user
           // their calibration, it must cost the session some confidence.
           const plain = await requestPlain(element);
+          hasLock = plain;
           return {
             locked: plain,
             unadjustedMovementRequested: true,
@@ -244,6 +280,7 @@ export function createPointerLockInput(options: PointerLockInputOptions): InputS
       }
 
       const locked = await requestPlain(element);
+      hasLock = locked;
       return {
         locked,
         unadjustedMovementRequested: wantsUnadjusted,
@@ -254,6 +291,7 @@ export function createPointerLockInput(options: PointerLockInputOptions): InputS
 
     releaseLock(): void {
       if (isLocked()) doc.exitPointerLock();
+      hasLock = false;
     },
   };
 }

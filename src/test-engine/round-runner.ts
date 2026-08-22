@@ -1,16 +1,19 @@
+import { angularDistance } from "../core/geometry/angular";
+import { aggregateRound } from "./metrics/aggregate";
 import { deriveRng } from "../core/random";
 import type { InvalidReason } from "../core/types/vocabulary";
 import type {
   PlannedRound,
   RoundAggregate,
   TestDefinition,
-  TrialContext,
+  TrialIdentity,
   TrialRecord,
 } from "./contracts";
 import {
   createMetricCollector,
   toTrialRecord,
   type MetricCollector,
+  type TrialObservation,
 } from "./telemetry/metric-collector";
 import {
   createTrialRunner,
@@ -46,7 +49,7 @@ export interface RoundRunnerOptions {
   readonly deps: TrialDependencies;
   readonly sessionSeed: string;
   readonly scopeKey: PlannedRound["scopeKey"];
-  readonly mode: TrialContext["mode"];
+  readonly mode: TrialIdentity["mode"];
   readonly collector?: MetricCollector;
   /** Engine time at which the round began. Trial offsets are relative to it. */
   readonly startedAt: number;
@@ -118,7 +121,7 @@ export function createRoundRunner(options: RoundRunnerOptions): RoundRunner {
       definition.interTrialIntervalMs.max,
     );
 
-    const context: TrialContext = {
+    const context: TrialIdentity = {
       trialIndex,
       isPractice: round.isPractice,
       scopeKey: options.scopeKey,
@@ -142,68 +145,51 @@ export function createRoundRunner(options: RoundRunnerOptions): RoundRunner {
 
   const recordOutcome = (outcome: TrialOutcome): void => {
     const primary = outcome.primaryTarget;
-    const metrics = collector.collect(
-      {
-        trialIndex,
-        isPractice: round.isPractice,
-        stimulusAt: outcome.stimulusAt,
-        resolvedAt: outcome.resolvedAt,
-        inputSamples: deps.buffers.input(),
-        frameSamples: deps.buffers.frames(),
-        events: deps.buffers.events(),
-        originAngles: outcome.originAngles,
-        targets: outcome.targets,
-        targetManager: deps.targets,
-        shots: outcome.shots,
-        hit: outcome.hit,
-        quality: {
-          cleanFrameFraction: outcome.frameStats.cleanFrameFraction,
-          hitchCount: outcome.frameStats.hitches,
-          bufferOverflow: deps.buffers.overflowed,
-        },
+
+    // Built once and shared: the derivations and the record must describe the same trial, and
+    // two separately-constructed observations are two chances for them to drift apart.
+    const observation: TrialObservation = {
+      trialIndex,
+      isPractice: round.isPractice,
+      variant: outcome.variant,
+      stimulusAt: outcome.stimulusAt,
+      resolvedAt: outcome.resolvedAt,
+      inputSamples: deps.buffers.input(),
+      frameSamples: deps.buffers.frames(),
+      events: deps.buffers.events(),
+      originAngles: outcome.originAngles,
+      targets: outcome.targets,
+      targetManager: deps.targets,
+      shots: outcome.shots,
+      hit: outcome.hit,
+      firstShotHit: outcome.firstShotHit,
+      quality: {
+        cleanFrameFraction: outcome.frameStats.cleanFrameFraction,
+        hitchCount: outcome.frameStats.hitches,
+        bufferOverflow: deps.buffers.overflowed,
       },
-      definition.metricKeys,
-    );
+    };
+
+    const metrics = collector.collect(observation, definition.metricKeys);
 
     records.push(
-      toTrialRecord(
-        {
-          trialIndex,
-          isPractice: round.isPractice,
-          stimulusAt: outcome.stimulusAt,
-          resolvedAt: outcome.resolvedAt,
-          inputSamples: deps.buffers.input(),
-          frameSamples: deps.buffers.frames(),
-          events: deps.buffers.events(),
-          originAngles: outcome.originAngles,
-          targets: outcome.targets,
-          targetManager: deps.targets,
-          shots: outcome.shots,
-          hit: outcome.hit,
-          quality: {
-            cleanFrameFraction: outcome.frameStats.cleanFrameFraction,
-            hitchCount: outcome.frameStats.hitches,
-            bufferOverflow: deps.buffers.overflowed,
-          },
-        },
-        metrics,
-        {
-          validity: outcome.validity,
-          invalidReason: outcome.invalidReason,
-          isReplacement: currentIsReplacement,
-          startOffsetMs: outcome.stimulusAt - startedAt,
-          stimulusSeed: currentSeedKey,
-          targetAngularRadiusDeg: primary?.spec.angularRadiusDeg ?? null,
-          targetDistanceDeg:
-            primary === null
-              ? null
-              : distanceOf(outcome, primary.spec.yawDeg, primary.spec.pitchDeg),
-          targetDirectionDeg:
-            primary === null
-              ? null
-              : directionOf(outcome, primary.spec.yawDeg, primary.spec.pitchDeg),
-        },
-      ),
+      toTrialRecord(observation, metrics, {
+        validity: outcome.validity,
+        invalidReason: outcome.invalidReason,
+        isReplacement: currentIsReplacement,
+        startOffsetMs: outcome.stimulusAt - startedAt,
+        stimulusSeed: currentSeedKey,
+        variant: outcome.variant,
+        qualityFlags: outcome.qualityFlags,
+        targetAngularRadiusDeg: primary?.spec.angularRadiusDeg ?? null,
+        // The spec is an offset from the trial's origin orientation, so the declared distance
+        // is the great-circle angle between the two — not a planar hypotenuse of the offset,
+        // which drifts from the truth as pitch grows.
+        targetDistanceDeg:
+          primary === null ? null : angularDistance(outcome.originAngles, primary.origin),
+        targetDirectionDeg:
+          primary === null ? null : directionOf(primary.spec.yawDeg, primary.spec.pitchDeg),
+      }),
     );
 
     // Only procedural invalidity earns a replacement, and only while the allowance lasts.
@@ -231,9 +217,13 @@ export function createRoundRunner(options: RoundRunnerOptions): RoundRunner {
         Date.parse(options.startedAtWallClock) + (now - startedAt),
       ).toISOString(),
       trials: records,
-      // Round aggregates are computed from trial metrics, and Phase 2 registers no metric
-      // derivations by design (doc 19 §19.2). Phase 3 fills both in together.
-      roundMetrics: {},
+      roundMetrics: aggregateRound(records, {
+        seed: sessionSeed,
+        roundIndex: round.roundIndex,
+        ...(definition.primaryMetricKey === undefined
+          ? {}
+          : { primaryMetricKey: definition.primaryMetricKey }),
+      }),
       qualitySummary: {
         lateFrameRatio,
         hitchCount: deps.frames.sessionStats().hitches,
@@ -327,17 +317,8 @@ export function createRoundRunner(options: RoundRunnerOptions): RoundRunner {
   };
 }
 
-/** Angular distance from the trial's origin orientation to the target's spawn position. */
-function distanceOf(outcome: TrialOutcome, yawDeg: number, pitchDeg: number): number {
-  const dy = yawDeg - outcome.originAngles.yawDeg;
-  const dp = pitchDeg - outcome.originAngles.pitchDeg;
-  return Math.hypot(dy, dp);
-}
-
-/** Direction from the trial's origin orientation, in degrees clockwise from screen-right. */
-function directionOf(outcome: TrialOutcome, yawDeg: number, pitchDeg: number): number {
-  const dy = yawDeg - outcome.originAngles.yawDeg;
-  const dp = pitchDeg - outcome.originAngles.pitchDeg;
-  const degrees = (Math.atan2(dp, dy) * 180) / Math.PI;
+/** Direction of a declared offset, in degrees clockwise from screen-right. */
+function directionOf(yawOffsetDeg: number, pitchOffsetDeg: number): number {
+  const degrees = (Math.atan2(pitchOffsetDeg, yawOffsetDeg) * 180) / Math.PI;
   return ((degrees % 360) + 360) % 360;
 }

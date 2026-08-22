@@ -28,7 +28,14 @@ import type {
 /* ------------------------------------------------------------------ declarations */
 
 export interface TargetSpec {
-  /** Angular position relative to the camera at spawn, in degrees. */
+  /**
+   * Angular offset from the camera's orientation at the moment of spawn, in degrees.
+   *
+   * **Relative, not absolute** (doc 09 §9.0.1). A definition says "12° to the right of wherever
+   * the player is looking"; the engine resolves that against the live camera. Absolute
+   * coordinates would make every declaration depend on where the previous trial happened to
+   * leave the view, which is exactly the drift the reset target exists to prevent.
+   */
   readonly yawDeg: number;
   readonly pitchDeg: number;
   readonly angularRadiusDeg: number;
@@ -63,11 +70,26 @@ export type MotionPattern =
 export type EndCondition = "first_hit" | "single_shot" | "duration" | "kill_count";
 export type ShootingModel = "click" | "hold" | "none";
 
-export interface TrialContext {
+/** What the round knows about a trial before it begins. */
+export interface TrialIdentity {
   readonly trialIndex: number;
   readonly isPractice: boolean;
   readonly scopeKey: ScopeKey;
   readonly mode: SessionMode;
+}
+
+/**
+ * What a definition's hooks see: the trial's identity plus the live view.
+ *
+ * The live parts are supplied by the engine at call time rather than fixed when the trial
+ * began, because a respawning test needs to place a target away from where the crosshair
+ * *is*, not away from where the trial started.
+ */
+export interface TrialContext extends TrialIdentity {
+  /** Camera orientation at the moment this hook is called, in degrees. */
+  readonly cameraAngles: { readonly yawDeg: number; readonly pitchDeg: number };
+  /** Kills so far this trial. 0 at the initial spawn; used by respawning tests. */
+  readonly killIndex: number;
 }
 
 /**
@@ -114,15 +136,51 @@ export interface TestDefinition {
    * counts as attempted (doc 09 §9.4).
    */
   readonly minHeldRatio?: number;
+  /**
+   * Minimum kills below which a `kill_count` trial is `insufficient_kills` rather than a short
+   * sequence. Procedural: set far below any plausible genuine attempt (doc 09 §9.5).
+   */
+  readonly minKills?: number;
+  /**
+   * Whether the camera responds to mouse movement.
+   *
+   * False only for the reaction test, where movement is ignored by design — a camera that moved
+   * would let the player pre-aim and turn a reaction measurement into an aiming one.
+   * Movement is still *recorded*, so premature movement remains detectable.
+   */
+  readonly cameraEnabled?: boolean;
 
   /** Pure and seeded: the same rng and context must always yield the same targets. */
   spawn(rng: TestRng, context: TrialContext): readonly TargetSpec[];
   motionFor(rng: TestRng, context: TrialContext): MotionPattern;
+  /**
+   * Targets to spawn when a scored target is destroyed mid-trial.
+   *
+   * Called with the live camera angles and the kill index, so a respawn can be placed away from
+   * where the crosshair actually is. Returning an empty list (the default) means the target is
+   * simply removed.
+   */
+  respawn?(rng: TestRng, context: TrialContext): readonly TargetSpec[];
+  /**
+   * An optional label for what this trial presented — a comfort sub-task, a distance class.
+   *
+   * Recorded on the trial and handed to metric derivations, so one test can present genuinely
+   * different tasks without the derivations having to infer which from the trial index.
+   */
+  variantFor?(rng: TestRng, context: TrialContext): string | null;
 
   /** Reason codes this test can produce beyond the universal set. All are procedural. */
   readonly additionalInvalidReasons: readonly InvalidReason[];
   /** Metric keys the engine derives for this test. Must all exist in the metric registry. */
   readonly metricKeys: readonly string[];
+  /**
+   * The metric this test is fundamentally about.
+   *
+   * `consistency` is computed from its trial values, because "consistent" is not meaningful
+   * on its own — a player can be consistent in acquisition time and erratic in placement, and
+   * a single number that averaged the two would describe neither.
+   */
+  readonly primaryMetricKey?: string;
 }
 
 /** The subset of the RNG surface a test declaration is allowed to touch. */
@@ -227,7 +285,17 @@ export interface TrialRecord {
   readonly targetDistanceDeg: number | null;
   readonly targetDirectionDeg: number | null;
   readonly stimulusSeed: string;
+  /** What this trial presented, where the test has more than one kind of trial. */
+  readonly variant: string | null;
   readonly quality: TrialQuality;
+  /**
+   * Environmental observations about this trial — a resize, a DPR change, a buffer overflow.
+   *
+   * Distinct from `invalidReason`: a flag records that something happened, not that the trial
+   * is unusable. Stored so a session with an unusual flag pattern can be surfaced rather than
+   * quietly cleaned (doc 10 §10.8).
+   */
+  readonly qualityFlags: readonly string[];
   /** Derived metric values, keyed by metric registry key. */
   readonly metrics: Readonly<Record<string, number>>;
 }
