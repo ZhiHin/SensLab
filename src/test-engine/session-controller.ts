@@ -122,8 +122,8 @@ export function createSessionController(options: SessionControllerOptions): Sess
     if (changed) callbacks?.onStageChange?.(next);
   };
 
-  const sensitivityFor = (round: PlannedRound): number => {
-    if (round.candidateIndex === null) return degreesPerCount(plan.baselineCountsPer360);
+  const countsFor = (round: PlannedRound): number => {
+    if (round.candidateIndex === null) return plan.baselineCountsPer360;
     const candidate = plan.candidates.find((c) => c.candidateIndex === round.candidateIndex);
     if (candidate === undefined) {
       throw new Error(
@@ -131,8 +131,10 @@ export function createSessionController(options: SessionControllerOptions): Sess
           `which the plan does not define`,
       );
     }
-    return degreesPerCount(candidate.countsPer360);
+    return candidate.countsPer360;
   };
+
+  const sensitivityFor = (round: PlannedRound): number => degreesPerCount(countsFor(round));
 
   /**
    * Places the next free-aim target.
@@ -200,6 +202,15 @@ export function createSessionController(options: SessionControllerOptions): Sess
       startedAt: now,
       startedAtWallClock: roundStartedWall,
       ...(options.collector === undefined ? {} : { collector: options.collector }),
+      surroundings: {
+        roundCountsPer360: countsFor(round),
+        baselineCountsPer360: plan.baselineCountsPer360,
+        searchParameter: plan.searchParameter ?? "hipfire",
+        fovHorizontalHalfDeg: plan.fovHorizontalHalfDeg,
+      },
+      ...(plan.physicalConstraint === undefined
+        ? {}
+        : { maxSingleSwipeCounts: plan.physicalConstraint.maxSingleSwipeCounts }),
     });
 
     setStage({ kind: "round", round, progress: runner.progress() });

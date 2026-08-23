@@ -13,16 +13,24 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 5 — Verified Game Adapters.** The project follows a phased plan defined in
+**Phase 6 — Advanced Tests.** The project follows a phased plan defined in
 [`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
-authentication, the pure-domain maths, CI — the engine that runs an aim session, the seven MVP
-tests with every metric doc 10 defines, the statistical engine that turns those measurements
-into a response curve and a recommendation, and the complete machinery for turning that
-recommendation into a game setting.
+authentication, the pure-domain maths, CI — the engine that runs an aim session, all thirteen
+aim tests doc 09 specifies with every metric doc 10 defines, the statistical engine that turns
+those measurements into a response curve and a recommendation, and the complete machinery for
+turning that recommendation into a game setting.
 
 **The calibration is deterministic statistics, not AI** (`SENS-BR-002`). It is a noisy
 one-dimensional derivative-free search with a drift model, and it **refuses to invent a peak**:
 a flat or indistinguishable response returns a range and says why (`SENS-BR-017`).
+
+**The full test battery is built.** The six post-MVP tests — Wide Flick, Strafe Tracking, Slide
+Tracking, Speed, Recoil Control and ADS — run through the same engine as the MVP seven, with
+three engine extensions: piecewise analytic motion, a generated camera disturbance, and a
+per-trial view change. Recoil patterns are **original and generated**; the ADS scope is
+**SensLab's own simulation**. Scope Calibration is the calibration engine on a different
+parameter (doc 13 §13.12) and is offered only for games with a verified scope roster — today,
+none. Scoring moved to `scoring_model_v2`; v1 stays compiled for the results it produced.
 
 **The game conversion machinery is complete and ships zero constants.** Both model forms, the
 quantisation, the ADS/scope family, the verification gate, the re-check mechanism and the
@@ -37,8 +45,8 @@ now built so that a constant **cannot** be shipped without closing one (`SENS-BR
 | 2     | Aim test engine (Canvas, pointer lock, timing) | Complete — [report](docs/implementation/phase-2-completion.md)     |
 | 3     | The MVP aim tests and their metrics            | Complete — [report](docs/implementation/phase-3-completion.md)     |
 | 4     | Calibration and statistical engine             | Complete — [report](docs/implementation/phase-4-completion.md)     |
-| **5** | **Verified game adapters**                     | **Complete** — [report](docs/implementation/phase-5-completion.md) |
-| 6     | Advanced aim tests                             | Not started                                                        |
+| 5     | Verified game adapters                         | Complete — [report](docs/implementation/phase-5-completion.md)     |
+| **6** | **Advanced aim tests**                         | **Complete** — [report](docs/implementation/phase-6-completion.md) |
 | 7     | Results and Aim DNA                            | Not started                                                        |
 | 8     | Validation and fine-tuning                     | Not started                                                        |
 | 9     | Accounts, history, hardware profiles           | Not started                                                        |
@@ -270,6 +278,10 @@ no surface can opt out. `/games` publishes the whole register.
 | Architecture | Vitest                   | Module boundaries, determinism, secret hygiene                             |
 | Integration  | Vitest + real PostgreSQL | Ownership, constraints, triggers, ingest idempotency, auth                 |
 | E2E          | Playwright               | Shell, auth screens, security headers, health, the engine harness          |
+
+Playwright serves the production build on port 3000 by default. If another app holds that port,
+set `PLAYWRIGHT_PROD_PORT` (and `PLAYWRIGHT_DEV_PORT` for the `lab` project) — the config will
+otherwise reuse whatever is listening there.
 
 The engine is tested through a **headless deterministic harness**: the real engine, driven by a
 scripted clock and a scripted input source with a recording renderer. That is what makes it

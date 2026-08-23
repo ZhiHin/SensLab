@@ -14,7 +14,7 @@ import {
 import { createLogger, redact, type LogRecord } from "@/lib/logger";
 import { EnvironmentError, parseEnv } from "@/lib/env";
 import { digestParameterSet, findParameterMismatches } from "@/lib/parameter-registry";
-import { SCORING_MODEL_V1 } from "@/core/params";
+import { RELEASED_PARAMETER_SETS, SCORING_MODEL_V1 } from "@/core/params";
 import { generateToken, hashToken, safeEquals, sha256 } from "@/lib/crypto";
 
 describe("canonicalJson", () => {
@@ -221,10 +221,10 @@ describe("parameter integrity — SENS-BR-029", () => {
       paramsHash: digest.hash,
     }));
     const problems = findParameterMismatches(stored);
-    // The other four sets are missing from `stored`, so they are reported; the scoring set
-    // is not.
+    // Every other released set — current and historical — is missing from `stored`, so each
+    // is reported; the one supplied is not.
     expect(problems.some((problem) => problem.includes("scoring_model_v1"))).toBe(false);
-    expect(problems.length).toBe(4);
+    expect(problems.length).toBe(RELEASED_PARAMETER_SETS.length - 1);
   });
 
   it("reports a hash mismatch", () => {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { MVP_TESTS } from "@/test-engine/tests";
+import { ADVANCED_TESTS, MVP_TESTS } from "@/test-engine/tests";
 import { copyFor } from "@/features/test-run/copy";
 
 /**
@@ -34,32 +34,46 @@ export default function TestIndexPage() {
         </p>
       </header>
 
-      <ul className="flex flex-col gap-3">
-        {MVP_TESTS.map((definition) => {
-          const copy = copyFor(definition);
-          return (
-            <li key={definition.key}>
-              <Link
-                href={`/test/${definition.key}`}
-                className="flex flex-col gap-1 border border-hairline p-5 hover:border-text-3"
-                data-testid={`test-link-${definition.key}`}
-              >
-                <span className="flex items-baseline justify-between gap-4">
-                  <span className="type-label">{copy.name}</span>
-                  <span className="type-label text-text-3" data-category={definition.category}>
-                    {definition.category === "scored"
-                      ? "scored"
-                      : definition.category === "baseline"
-                        ? "baseline · not scored"
-                        : "constraint · not scored"}
-                  </span>
-                </span>
-                <span className="text-sm text-text-2">{copy.summary}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      <TestList tests={MVP_TESTS} />
+
+      <h2 className="type-label mt-10 mb-3">Advanced tests</h2>
+      <p className="mb-4 max-w-[62ch] text-sm text-text-3">
+        Six more tests that add resolution rather than capability: large turns, unpredictable and
+        high-speed tracking, pure speed, recoil control against a generated pattern, and aiming
+        through a simulated scope. Advanced sessions run them; here each runs alone.
+      </p>
+      <TestList tests={ADVANCED_TESTS} />
     </main>
+  );
+}
+
+function TestList({ tests }: { tests: readonly (typeof MVP_TESTS)[number][] }) {
+  return (
+    <ul className="flex flex-col gap-3">
+      {tests.map((definition) => {
+        const copy = copyFor(definition);
+        return (
+          <li key={definition.key}>
+            <Link
+              href={`/test/${definition.key}`}
+              className="flex flex-col gap-1 border border-hairline p-5 hover:border-text-3"
+              data-testid={`test-link-${definition.key}`}
+            >
+              <span className="flex items-baseline justify-between gap-4">
+                <span className="type-label">{copy.name}</span>
+                <span className="type-label text-text-3" data-category={definition.category}>
+                  {definition.category === "scored"
+                    ? "scored"
+                    : definition.category === "baseline"
+                      ? "baseline · not scored"
+                      : "constraint · not scored"}
+                </span>
+              </span>
+              <span className="text-sm text-text-2">{copy.summary}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

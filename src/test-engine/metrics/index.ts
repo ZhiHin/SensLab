@@ -1,7 +1,11 @@
 import { createMetricCollector, type MetricCollector } from "../telemetry/metric-collector";
 import { ACQUISITION_DERIVATIONS } from "./acquisition";
+import { ADS_DERIVATIONS } from "./ads";
 import { COMFORT_DERIVATIONS } from "./comfort";
+import { LIFT_DERIVATIONS } from "./lift";
+import { MOTION_TRACKING_DERIVATIONS } from "./motion-tracking";
 import { PLACEMENT_DERIVATIONS } from "./placement";
+import { RECOIL_DERIVATIONS } from "./recoil";
 import { SWITCHING_DERIVATIONS } from "./switching";
 import { TRACKING_DERIVATIONS } from "./tracking";
 
@@ -14,9 +18,13 @@ import { TRACKING_DERIVATIONS } from "./tracking";
  */
 
 export * from "./acquisition";
+export * from "./ads";
 export * from "./aggregate";
 export * from "./comfort";
+export * from "./lift";
+export * from "./motion-tracking";
 export * from "./placement";
+export * from "./recoil";
 export * from "./switching";
 export * from "./trace";
 export * from "./tracking";
@@ -27,6 +35,10 @@ export const ALL_DERIVATIONS = [
   ...TRACKING_DERIVATIONS,
   ...SWITCHING_DERIVATIONS,
   ...COMFORT_DERIVATIONS,
+  ...MOTION_TRACKING_DERIVATIONS,
+  ...RECOIL_DERIVATIONS,
+  ...LIFT_DERIVATIONS,
+  ...ADS_DERIVATIONS,
 ];
 
 export function createStandardCollector(): MetricCollector {

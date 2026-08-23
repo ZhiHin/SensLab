@@ -65,7 +65,81 @@ export type MotionPattern =
         readonly angularFrequency: number;
         readonly phase: number;
       }[];
+    }
+  | {
+      /**
+       * Piecewise constant-acceleration motion along one axis (doc 09 §9.9, §9.10).
+       *
+       * Still closed-form: each segment is a quadratic in time, so a position at any instant is
+       * an exact evaluation, never an integration. Strafe reversals and slide profiles are both
+       * expressed this way; what differs is how the segments are generated.
+       */
+      readonly kind: "segments";
+      readonly axis: "yaw" | "pitch";
+      readonly segments: readonly MotionSegment[];
     };
+
+export interface MotionSegment {
+  /** Elapsed time at which this segment begins, milliseconds since spawn. */
+  readonly startMs: number;
+  readonly durationMs: number;
+  /** Offset from the spawn origin at `startMs`, degrees. */
+  readonly startOffsetDeg: number;
+  readonly startVelocityDegPerSec: number;
+  readonly accelerationDegPerSec2: number;
+  /** What this segment is, for the derivations that need to know (a sustained peak, say). */
+  readonly label: "cruise" | "reverse" | "accelerate" | "sustain" | "decelerate" | "hold";
+}
+
+/**
+ * A generated camera disturbance (doc 09 §9.12).
+ *
+ * A closed-form offset applied to the camera as a function of **held time** — the cumulative
+ * time the fire button has been down. Every parameter is drawn from the session seed, so the
+ * pattern is unpredictable to the player and exactly reproducible to the derivations, which
+ * subtract it back out to recover the player's own counter-movement.
+ *
+ * **Original and generated.** This is a parametric family — a vertical rise, a horizontal
+ * drift with a seeded sign schedule, per-shot jitter. No proprietary weapon pattern from any
+ * game is reproduced, sampled or approximated, and nothing here could be used to (doc 01 §1.7).
+ */
+export interface DisturbancePattern {
+  readonly kind: "recoil";
+  /** Family label for comparability across candidates, e.g. "steep-vertical". */
+  readonly family: string;
+  /** Held time over which the pattern develops; held constant beyond it. */
+  readonly burstMs: number;
+  /** Asymptotic vertical rise, degrees. Positive lifts the view. */
+  readonly verticalRiseDeg: number;
+  /** Time constant of the vertical rise, milliseconds. */
+  readonly verticalTimeConstantMs: number;
+  readonly horizontalDriftDegPerSec: number;
+  /** Held times at which the horizontal drift flips sign, ascending. */
+  readonly horizontalSignChangesMs: readonly number[];
+  /** The initial horizontal sign. */
+  readonly horizontalInitialSign: -1 | 1;
+  readonly shotIntervalMs: number;
+  readonly jitterDeg: number;
+  /** Per-shot jitter, pre-drawn in [-1, 1] for yaw and pitch, indexed by shot. */
+  readonly jitter: readonly { readonly yaw: number; readonly pitch: number }[];
+}
+
+/**
+ * A per-trial change to the view (doc 09 §9.13).
+ *
+ * Applied when the measured window opens — the moment the player "scopes in" — and restored
+ * when the trial resolves. The FOV narrows in tangent space by `magnification`, and the
+ * sensitivity during the window is the absolute counts/360 given, which is how one definition
+ * serves both the ordinary ADS test (scoped sensitivity *derived* from the round's hipfire
+ * one) and scope calibration (scoped sensitivity *is* the round's candidate).
+ */
+export interface TrialView {
+  readonly magnification: number;
+  /** Sensitivity during the positioning phase, before the window opens. */
+  readonly positioningCountsPer360: number;
+  /** Sensitivity during the measured window. */
+  readonly measuredCountsPer360: number;
+}
 
 export type EndCondition = "first_hit" | "single_shot" | "duration" | "kill_count";
 export type ShootingModel = "click" | "hold" | "none";
@@ -90,6 +164,19 @@ export interface TrialContext extends TrialIdentity {
   readonly cameraAngles: { readonly yawDeg: number; readonly pitchDeg: number };
   /** Kills so far this trial. 0 at the initial spawn; used by respawning tests. */
   readonly killIndex: number;
+  /** The sensitivity this round runs at — the candidate's, or the baseline. */
+  readonly roundCountsPer360: number;
+  /** The session's sensitivity-independent baseline. */
+  readonly baselineCountsPer360: number;
+  /**
+   * What the session is searching over (doc 13 §13.12).
+   *
+   * `hipfire` is every ordinary session. `scope` is Scope Calibration: the round's sensitivity
+   * is the *scoped* one under test and the hipfire is held at the baseline.
+   */
+  readonly searchParameter: "hipfire" | "scope";
+  /** The player's hipfire horizontal half-FOV, fixed for the session. */
+  readonly fovHorizontalHalfDeg: number;
 }
 
 /**
@@ -168,6 +255,20 @@ export interface TestDefinition {
    * different tasks without the derivations having to infer which from the trial index.
    */
   variantFor?(rng: TestRng, context: TrialContext): string | null;
+  /**
+   * A camera disturbance applied while the fire button is held (doc 09 §9.12).
+   *
+   * Pure and seeded like `spawn`. The engine evaluates it; the derivations subtract it back
+   * out. A test that declares none has an undisturbed camera.
+   */
+  disturbanceFor?(rng: TestRng, context: TrialContext): DisturbancePattern | null;
+  /**
+   * A view change for the measured window (doc 09 §9.13).
+   *
+   * Returning null leaves the hipfire view in place — which is how an ADS definition can
+   * alternate scoped trials with hipfire controls inside one round.
+   */
+  viewFor?(rng: TestRng, context: TrialContext): TrialView | null;
 
   /** Reason codes this test can produce beyond the universal set. All are procedural. */
   readonly additionalInvalidReasons: readonly InvalidReason[];
@@ -258,6 +359,17 @@ export interface SessionPlan {
   readonly maxImpliedCountsPerSecond: number;
 
   readonly freeAim?: FreeAimStage;
+
+  /** What the candidates vary. Defaults to `hipfire`; `scope` for Scope Calibration. */
+  readonly searchParameter?: "hipfire" | "scope";
+  /**
+   * The player's measured physical reach, in mouse counts (doc 09 §9.10).
+   *
+   * Counts rather than centimetres so the engine never learns the DPI: the comfort test
+   * measured a yaw at the baseline sensitivity, and `yaw / degreesPerCount(baseline)` is that
+   * reach in the one unit the engine reasons in. Absent when the comfort test has not run.
+   */
+  readonly physicalConstraint?: { readonly maxSingleSwipeCounts: number };
 }
 
 /* ------------------------------------------------------------------ engine output */

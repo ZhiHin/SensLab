@@ -194,6 +194,8 @@ export async function loadObservedTrials(
       trialIndex: testTrials.trialIndex,
       validity: testTrials.validity,
       isPractice: testTrials.isPractice,
+      scopeKey: testRounds.scopeKey,
+      variant: testTrials.variant,
     })
     .from(testTrials)
     .innerJoin(testRounds, eq(testRounds.id, testTrials.roundId))
@@ -230,6 +232,8 @@ export async function loadObservedTrials(
     trialIndex: row.trialIndex,
     validity: row.validity,
     isPractice: row.isPractice,
+    scopeKey: row.scopeKey,
+    variant: row.variant,
     metrics: byTrial.get(row.trialId) ?? {},
   }));
 }

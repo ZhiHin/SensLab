@@ -31,8 +31,9 @@ test.describe("application shell", () => {
   });
 
   test("shows the active algorithm versions", async ({ page }) => {
+    // Phase 6 moved scoring to v2; the shell shows whatever is current, never a literal.
     await page.goto("/");
-    await expect(page.getByText("scoring_model_v1")).toBeVisible();
+    await expect(page.getByText("scoring_model_v2")).toBeVisible();
     await expect(page.getByText("calibration_model_v1")).toBeVisible();
     await expect(page.getByText("confidence_model_v1")).toBeVisible();
   });

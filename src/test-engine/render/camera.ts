@@ -44,6 +44,26 @@ export interface Camera {
   project(target: Angles): Projection | null;
   readonly horizontalHalfFovDeg: number;
   readonly verticalHalfFovDeg: number;
+
+  /**
+   * Sets the additive disturbance (doc 09 §9.12).
+   *
+   * The crosshair the player sees, shoots from and is measured against is the base orientation
+   * *plus* this offset. It is additive and never integrated, so removing it recovers the
+   * player's own movement exactly.
+   */
+  setDisturbance(yawDeg: number, pitchDeg: number): void;
+  readonly disturbance: Angles;
+
+  /**
+   * Narrows the field of view (doc 09 §9.13).
+   *
+   * Tangent-space magnification: `tan(h′) = tan(h) / m`. A magnification of 1 restores the
+   * session FOV. Like sensitivity, only changed between the positioning and measured phases of
+   * a trial — never inside a measured window.
+   */
+  setMagnification(magnification: number): void;
+  readonly magnification: number;
 }
 
 export interface CameraOptions {
@@ -65,15 +85,29 @@ export function createCamera(options: CameraOptions): Camera {
     throw new RangeError(`aspect ratio must be positive, received ${aspectRatio}`);
   }
 
-  const verticalHalfFovDeg = verticalHalfFovFromHorizontal(horizontalHalfFovDeg, aspectRatio);
-  const tanHalfX = Math.tan(toRadians(horizontalHalfFovDeg));
-  const tanHalfY = Math.tan(toRadians(verticalHalfFovDeg));
+  const baseTanHalfX = Math.tan(toRadians(horizontalHalfFovDeg));
+  let magnification = 1;
+  let tanHalfX = baseTanHalfX;
+  let tanHalfY = Math.tan(
+    toRadians(verticalHalfFovFromHorizontal(horizontalHalfFovDeg, aspectRatio)),
+  );
+  let currentHalfFovDeg = horizontalHalfFovDeg;
+  let currentVerticalHalfFovDeg = verticalHalfFovFromHorizontal(horizontalHalfFovDeg, aspectRatio);
 
   let yaw = options.yawDeg ?? 0;
   let pitch = options.pitchDeg ?? 0;
   let degreesPerCount = options.degreesPerCount;
   let countsX = 0;
   let countsY = 0;
+  let disturbYaw = 0;
+  let disturbPitch = 0;
+
+  const clampPitch = (value: number): number =>
+    value > MAX_PITCH_DEG ? MAX_PITCH_DEG : value < -MAX_PITCH_DEG ? -MAX_PITCH_DEG : value;
+
+  // The orientation everything downstream sees: the integrated input plus the disturbance.
+  const effectiveYaw = (): number => yaw + disturbYaw;
+  const effectivePitch = (): number => clampPitch(pitch + disturbPitch);
 
   // Recomputed only when the angles change, so the hot path does not rebuild a basis per
   // projection during a frame with several targets.
@@ -82,7 +116,7 @@ export function createCamera(options: CameraOptions): Camera {
 
   const refreshBasis = (): CameraBasis => {
     if (basisDirty) {
-      basisCache = cameraBasis(yaw, pitch);
+      basisCache = cameraBasis(effectiveYaw(), effectivePitch());
       basisDirty = false;
     }
     return basisCache;
@@ -90,10 +124,16 @@ export function createCamera(options: CameraOptions): Camera {
 
   return {
     get yawDeg() {
-      return yaw;
+      return effectiveYaw();
     },
     get pitchDeg() {
-      return pitch;
+      return effectivePitch();
+    },
+    get disturbance() {
+      return { yawDeg: disturbYaw, pitchDeg: disturbPitch };
+    },
+    get magnification() {
+      return magnification;
     },
     get degreesPerCount() {
       return degreesPerCount;
@@ -102,10 +142,10 @@ export function createCamera(options: CameraOptions): Camera {
       return { dx: countsX, dy: countsY };
     },
     get horizontalHalfFovDeg() {
-      return horizontalHalfFovDeg;
+      return currentHalfFovDeg;
     },
     get verticalHalfFovDeg() {
-      return verticalHalfFovDeg;
+      return currentVerticalHalfFovDeg;
     },
 
     applyCounts(dx: number, dy: number): void {
@@ -115,14 +155,27 @@ export function createCamera(options: CameraOptions): Camera {
       yaw += dx * degreesPerCount;
       // Screen coordinates grow downward; a positive dy is a downward mouse movement, which
       // lowers the view.
-      const nextPitch = pitch - dy * degreesPerCount;
-      pitch =
-        nextPitch > MAX_PITCH_DEG
-          ? MAX_PITCH_DEG
-          : nextPitch < -MAX_PITCH_DEG
-            ? -MAX_PITCH_DEG
-            : nextPitch;
+      pitch = clampPitch(pitch - dy * degreesPerCount);
       basisDirty = true;
+    },
+
+    setDisturbance(nextYaw: number, nextPitch: number): void {
+      if (!Number.isFinite(nextYaw) || !Number.isFinite(nextPitch)) return;
+      if (nextYaw === disturbYaw && nextPitch === disturbPitch) return;
+      disturbYaw = nextYaw;
+      disturbPitch = nextPitch;
+      basisDirty = true;
+    },
+
+    setMagnification(next: number): void {
+      if (!Number.isFinite(next) || next <= 0) {
+        throw new RangeError(`magnification must be positive, received ${next}`);
+      }
+      magnification = next;
+      tanHalfX = baseTanHalfX / next;
+      currentHalfFovDeg = (Math.atan(tanHalfX) * 180) / Math.PI;
+      currentVerticalHalfFovDeg = verticalHalfFovFromHorizontal(currentHalfFovDeg, aspectRatio);
+      tanHalfY = Math.tan(toRadians(currentVerticalHalfFovDeg));
     },
 
     setDegreesPerCount(value: number): void {
@@ -134,7 +187,7 @@ export function createCamera(options: CameraOptions): Camera {
 
     setAngles(nextYaw: number, nextPitch: number): void {
       yaw = nextYaw;
-      pitch = Math.min(MAX_PITCH_DEG, Math.max(-MAX_PITCH_DEG, nextPitch));
+      pitch = clampPitch(nextPitch);
       basisDirty = true;
     },
 
@@ -144,7 +197,7 @@ export function createCamera(options: CameraOptions): Camera {
     },
 
     angles(): Angles {
-      return { yawDeg: yaw, pitchDeg: pitch };
+      return { yawDeg: effectiveYaw(), pitchDeg: effectivePitch() };
     },
 
     basis(): CameraBasis {

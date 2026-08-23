@@ -8,6 +8,7 @@ import { algorithmRepo, sessionRepo } from "@/repositories";
 import { withTransaction } from "@/repositories/transaction";
 import type { Actor } from "@/repositories/actor";
 import type { RoundAggregate, SessionPlan } from "@/test-engine/contracts";
+import type { ScopeKey } from "@/core/types/vocabulary";
 import { createSingleTestPlan } from "@/test-engine/plan/single-test";
 import { getTestDefinition } from "@/test-engine/tests";
 
@@ -54,6 +55,11 @@ export interface StartTestRunOutcome {
 /** Bounds a plausible sensitivity: below this a full turn takes metres of desk. */
 const MIN_COUNTS_PER_360 = 500;
 const MAX_COUNTS_PER_360 = 200_000;
+
+/** The scope a test runs under when launched on its own. Only the ADS test needs one. */
+function scopeKeyForStandaloneRun(testKey: string): ScopeKey {
+  return testKey === "ads" ? "ads" : "hipfire";
+}
 
 export async function startTestRun(
   actor: Actor,
@@ -125,6 +131,9 @@ export async function startTestRun(
       countsPer360: countsPer360(input.countsPer360),
       aspectRatio: input.aspectRatio,
       maxImpliedCountsPerSecond: input.maxImpliedCountsPerSecond,
+      // The ADS test measures a scoped state and has no meaning at hipfire; on its own it runs
+      // under SensLab's simulated low-zoom ADS view (doc 09 §9.13), never a game's.
+      scopeKey: scopeKeyForStandaloneRun(definition.key),
     });
 
     await sessionRepo.updateSessionStatus(actor, session.id, "in_progress", tx);

@@ -1,5 +1,5 @@
 import type { ScoredTrial } from "../calibration/contracts";
-import type { TestKey } from "../types/vocabulary";
+import type { ScopeKey, TestKey } from "../types/vocabulary";
 import type { ScoringParameters } from "./contracts";
 import {
   computeScales,
@@ -43,6 +43,13 @@ import {
 
 export interface ObjectiveOptions {
   readonly parameters: ScoringParameters;
+  /**
+   * Which scoring track to compute (doc 09 §9.13). Defaults to hipfire.
+   *
+   * Scope Calibration runs the same objective over the same engine with this set to the
+   * scope under test — the one parameter that makes doc 13 §13.12's claim concrete.
+   */
+  readonly scopeKey?: ScopeKey;
 }
 
 export interface ObjectiveOutcome {
@@ -59,10 +66,12 @@ export function computeObjective(
   options: ObjectiveOptions,
 ): ObjectiveOutcome {
   const { parameters } = options;
-  const scales = computeScales(observed, {
-    robustScaleFloors: parameters.robustScaleFloors,
-    clipConstant: parameters.clipConstant,
-  });
+  const scopeKey = options.scopeKey ?? "hipfire";
+  const scales = computeScales(
+    observed,
+    { robustScaleFloors: parameters.robustScaleFloors, clipConstant: parameters.clipConstant },
+    scopeKey,
+  );
   const byKey = indexScales(scales);
   const decisionKeys = new Set(parameters.decisionMetricKeys);
   const testWeights = new Map<TestKey, number>(
@@ -72,7 +81,7 @@ export function computeObjective(
   const trials: ScoredTrial[] = [];
   let unscored = 0;
 
-  for (const trial of scorableTrials(observed)) {
+  for (const trial of scorableTrials(observed, scopeKey)) {
     const testWeight = testWeights.get(trial.testKey);
     // A test with no objective weight contributes nothing to the search by design — reaction
     // and comfort measure something that cannot vary with sensitivity (`SENS-BR-006`).

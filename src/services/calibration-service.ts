@@ -18,7 +18,7 @@ import {
   type RoundInput,
   type SearchBracket,
 } from "@/core/calibration";
-import { CALIBRATION_MODEL_V1, SCORING_MODEL_V1 } from "@/core/params";
+import { CALIBRATION_MODEL_V1, SCORING_MODEL_V2 } from "@/core/params";
 import { deriveRng } from "@/core/random";
 import { computeObjective } from "@/core/scoring";
 import { logSensitivity } from "@/core/types/brand";
@@ -51,7 +51,7 @@ import { notFound } from "@/lib/errors";
  */
 
 const CALIBRATION_PARAMS = CALIBRATION_MODEL_V1.params;
-const SCORING_PARAMS = SCORING_MODEL_V1.params;
+const SCORING_PARAMS = SCORING_MODEL_V2.params;
 
 export interface CalibrationContext {
   readonly sessionId: string;

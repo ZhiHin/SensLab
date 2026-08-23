@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getMetricDefinition, METRIC_KEYS } from "@/core/metrics";
-import { countsPer360 } from "@/core/types/brand";
-import type { RoundAggregate, TestDefinition } from "@/test-engine/contracts";
-import { createEngine } from "@/test-engine/engine";
-import { createStandardCollector } from "@/test-engine/metrics";
-import { createSingleTestPlan } from "@/test-engine/plan/single-test";
+import type { TestDefinition } from "@/test-engine/contracts";
 import {
   comfort360Test,
   flickTest,
@@ -17,7 +13,7 @@ import {
   switchingTest,
   trackingTest,
 } from "@/test-engine/tests";
-import { createHarness } from "../../helpers/engine-harness";
+import { BATTERY_FRAME_MS as FRAME_MS, runBattery } from "../../helpers/battery-runner";
 
 /**
  * The MVP battery, each test running end to end (doc 09 §9.1–§9.7).
@@ -34,115 +30,10 @@ import { createHarness } from "../../helpers/engine-harness";
  * lifecycle, the stimulus and the metric pipeline all connect.
  */
 
-const FRAME_MS = 1000 / 240;
-const COUNTS = countsPer360(9448.82);
-
-interface RunOutcome {
-  readonly aggregates: readonly RoundAggregate[];
-  readonly measured: RoundAggregate;
-  readonly frames: number;
-}
-
-/**
- * Runs one test to completion with a synthetic player.
- *
- * The player reads targets from the renderer, exactly as a human reads them from the screen.
- * Anything it could not see, it does not aim at.
- */
-function runTest(definition: TestDefinition, options: { seed?: string } = {}): RunOutcome {
-  const { clock, input, renderer } = createHarness(1000);
-  const aggregates: RoundAggregate[] = [];
-
-  const plan = createSingleTestPlan({
-    sessionId: "00000000-0000-7000-8000-00000000test",
-    seed: options.seed ?? "battery-seed",
-    mode: "quick",
-    definition,
-    countsPer360: COUNTS,
-    aspectRatio: 16 / 9,
-    maxImpliedCountsPerSecond: 4_000_000,
-  });
-
-  const engine = createEngine({
-    plan,
-    definitions: [definition],
-    clock,
-    input,
-    renderer,
-    collector: createStandardCollector(),
-    frameBudgetMs: FRAME_MS,
-    callbacks: { onRoundComplete: (aggregate) => aggregates.push(aggregate) },
-  });
-
-  engine.init();
-  engine.startUnlocked();
-
-  let holding = false;
-  // A comfort attempt sweeps for a while and then confirms; this tracks how far in it is.
-  let sweepFrames = 0;
-
-  for (let frame = 0; frame < 60_000 && engine.state === "running"; frame += 1) {
-    clock.tick(FRAME_MS);
-    const now = clock.now();
-    const drawn = renderer.lastFrame;
-    if (drawn === null) continue;
-
-    const camera = engine.camera;
-    const perCount = camera.degreesPerCount;
-    const active = engine.trialPhase === "active";
-
-    if (definition.key === "comfort360") {
-      // No targets at all: sweep right, then confirm. The measured window has to be open first,
-      // or the confirming click would be a premature one.
-      if (!active) {
-        sweepFrames = 0;
-        continue;
-      }
-      sweepFrames += 1;
-      if (sweepFrames < 40) {
-        input.move(now, 20 / perCount, 0);
-      } else if (sweepFrames === 45) {
-        input.click(now + 0.5);
-      }
-      continue;
-    }
-
-    const target = drawn.targets.living()[0];
-    if (target === undefined) {
-      if (holding) {
-        input.release(now);
-        holding = false;
-      }
-      continue;
-    }
-
-    // Aim at where the target is *now* — analytic motion means that is exact at this instant.
-    const position = drawn.targets.positionAt(target, now);
-    const dx = (position.yawDeg - camera.yawDeg) / perCount;
-    const dy = -(position.pitchDeg - camera.pitchDeg) / perCount;
-    if (dx !== 0 || dy !== 0) input.move(now, dx, dy);
-
-    if (definition.shootingModel === "hold") {
-      // Hold from the moment the measured window opens and never let go: the trial's clock
-      // ends it.
-      if (active && !holding) {
-        input.press(now + 0.25);
-        holding = true;
-      }
-      continue;
-    }
-
-    // Reset targets must be cleared to open the window; scored targets are the measurement.
-    input.click(now + 0.5);
-  }
-
-  const measured = aggregates.find((round) => !round.isPractice);
-  if (measured === undefined) {
-    throw new Error(`${definition.key} produced no measured round in the frame budget`);
-  }
-
-  return { aggregates, measured, frames: renderer.drawCount };
-}
+// The synthetic player lives in tests/helpers/battery-runner.ts since Phase 6, shared with
+// the advanced battery.
+const runTest = (definition: TestDefinition, options: { seed?: string } = {}) =>
+  runBattery(definition, options);
 
 describe("every MVP test runs independently", () => {
   for (const definition of MVP_TESTS) {

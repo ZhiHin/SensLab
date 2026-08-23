@@ -1,6 +1,6 @@
 import { getMetricDefinition } from "../metrics";
 import { median, medianAbsoluteDeviation, MAD_TO_SD } from "../statistics";
-import type { TestKey, TrialValidity } from "../types/vocabulary";
+import type { ScopeKey, TestKey, TrialValidity } from "../types/vocabulary";
 
 /**
  * Direction alignment, robust standardisation and bounded influence (doc 14 §14.2–§14.3).
@@ -33,6 +33,16 @@ export interface ObservedTrial {
   readonly trialIndex: number;
   readonly validity: TrialValidity;
   readonly isPractice: boolean;
+  /**
+   * The scope state the round ran under (doc 09 §9.13).
+   *
+   * A scoring track is per scope: a trial measured through a 4× view says nothing about the
+   * hipfire sensitivity, and the two must never be pooled. Defaults to hipfire for callers
+   * predating Phase 6.
+   */
+  readonly scopeKey?: ScopeKey;
+  /** What the trial presented, where the test has more than one kind of trial. */
+  readonly variant?: string | null;
   readonly metrics: Readonly<Record<string, number>>;
 }
 
@@ -82,9 +92,28 @@ function isBinaryMetric(metricKey: string): boolean {
   return getMetricDefinition(metricKey)?.aggregation === "proportion";
 }
 
-/** Trials that may enter the estimator: measured, not practice, not procedurally invalid. */
-export function scorableTrials(trials: readonly ObservedTrial[]): readonly ObservedTrial[] {
-  return trials.filter((trial) => !trial.isPractice && trial.validity !== "invalid");
+/**
+ * Trials that may enter the estimator: measured, not practice, not procedurally invalid.
+ *
+ * Two Phase 6 exclusions, both documented interactions rather than performance filters:
+ *
+ *  - A slide whose required travel exceeded the player's measured reach (`pathTruncated`) is
+ *    excluded from tracking scoring and retained as evidence for the constraint model
+ *    (doc 09 §9.10). The trial is stored; it simply is not a measurement of tracking.
+ *  - A hipfire *control* trial inside a scoped round measures the hipfire state, not the
+ *    scope. It exists for the transition metric and is excluded from the scope's track.
+ */
+export function scorableTrials(
+  trials: readonly ObservedTrial[],
+  scopeKey: ScopeKey = "hipfire",
+): readonly ObservedTrial[] {
+  return trials.filter((trial) => {
+    if (trial.isPractice || trial.validity === "invalid") return false;
+    if ((trial.scopeKey ?? "hipfire") !== scopeKey) return false;
+    if (scopeKey !== "hipfire" && trial.variant === "hipfire") return false;
+    if ((trial.metrics.pathTruncated ?? 0) >= 1) return false;
+    return true;
+  });
 }
 
 /**
@@ -97,10 +126,11 @@ export function scorableTrials(trials: readonly ObservedTrial[]): readonly Obser
 export function computeScales(
   trials: readonly ObservedTrial[],
   options: StandardiseOptions,
+  scopeKey: ScopeKey = "hipfire",
 ): readonly MetricScale[] {
   const grouped = new Map<string, { testKey: TestKey; metricKey: string; values: number[] }>();
 
-  for (const trial of scorableTrials(trials)) {
+  for (const trial of scorableTrials(trials, scopeKey)) {
     for (const [metricKey, raw] of Object.entries(trial.metrics)) {
       if (!Number.isFinite(raw)) continue;
       const key = `${trial.testKey}::${metricKey}`;

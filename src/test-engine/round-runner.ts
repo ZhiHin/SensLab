@@ -20,6 +20,7 @@ import {
   type TrialDependencies,
   type TrialOutcome,
   type TrialRunner,
+  type TrialSurroundings,
 } from "./trial-manager";
 
 /**
@@ -54,6 +55,10 @@ export interface RoundRunnerOptions {
   /** Engine time at which the round began. Trial offsets are relative to it. */
   readonly startedAt: number;
   readonly startedAtWallClock: string;
+  /** What the trial hooks are told about the round and the session. */
+  readonly surroundings: TrialSurroundings;
+  /** The player's measured reach in counts, when the comfort test has run (doc 09 §9.10). */
+  readonly maxSingleSwipeCounts?: number;
 }
 
 export interface RoundProgress {
@@ -140,6 +145,7 @@ export function createRoundRunner(options: RoundRunnerOptions): RoundRunner {
       deps,
       startedAt: now,
       interTrialIntervalMs: interval,
+      surroundings: options.surroundings,
     });
   };
 
@@ -163,6 +169,10 @@ export function createRoundRunner(options: RoundRunnerOptions): RoundRunner {
       shots: outcome.shots,
       hit: outcome.hit,
       firstShotHit: outcome.firstShotHit,
+      disturbance: outcome.disturbance,
+      view: outcome.view,
+      degreesPerCount: outcome.degreesPerCount,
+      maxSingleSwipeCounts: options.maxSingleSwipeCounts ?? null,
       quality: {
         cleanFrameFraction: outcome.frameStats.cleanFrameFraction,
         hitchCount: outcome.frameStats.hitches,

@@ -226,8 +226,8 @@ export type MotionPreference = (typeof MOTION_PREFERENCES)[number];
 
 /* ------------------------------------------------------------------ tests */
 
-/** doc 09 — the MVP aim-test roster. Post-MVP tests are added in Phase 6. */
-export const TEST_KEYS = tuple(
+/** doc 09 §9.1–§9.7 — the MVP battery. */
+export const MVP_TEST_KEYS = tuple(
   "reaction",
   "flick",
   "micro",
@@ -236,7 +236,26 @@ export const TEST_KEYS = tuple(
   "precision",
   "comfort360",
 );
+
+/**
+ * doc 09 §9.8–§9.13 — the post-MVP tests (Phase 6, FR-061).
+ *
+ * Scope Calibration (doc 09 §9.14) is deliberately not a key: it is the calibration engine run
+ * over ADS-test rounds with a different search parameter, not a distinct test.
+ */
+export const ADVANCED_TEST_KEYS = tuple(
+  "wide-flick",
+  "strafe-tracking",
+  "slide-tracking",
+  "speed",
+  "recoil",
+  "ads",
+);
+
+export const TEST_KEYS = tuple(...MVP_TEST_KEYS, ...ADVANCED_TEST_KEYS);
 export type TestKey = (typeof TEST_KEYS)[number];
+export type MvpTestKey = (typeof MVP_TEST_KEYS)[number];
+export type AdvancedTestKey = (typeof ADVANCED_TEST_KEYS)[number];
 
 export const TEST_CATEGORIES = tuple("baseline", "scored", "constraint");
 export type TestCategory = (typeof TEST_CATEGORIES)[number];

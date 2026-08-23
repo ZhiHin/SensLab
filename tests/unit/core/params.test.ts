@@ -5,8 +5,13 @@ import {
   CALIBRATION_MODEL_V1,
   CONFIDENCE_MODEL_V1,
   CURRENT_VERSIONS,
+  HISTORICAL_PARAMETER_SETS,
   REFERENCE_DIST_PROVISIONAL_V1,
+  REFERENCE_DIST_PROVISIONAL_V2,
+  RELEASED_PARAMETER_SETS,
   SCORING_MODEL_V1,
+  SCORING_MODEL_V2,
+  findParameterSet,
 } from "@/core/params";
 import {
   DECISION_METRIC_KEYS,
@@ -15,7 +20,13 @@ import {
   getMetricDefinition,
   isKnownMetric,
 } from "@/core/metrics/registry";
-import { DIMENSION_KEYS, TEST_KEYS } from "@/core/types/vocabulary";
+import {
+  ADVANCED_TEST_KEYS,
+  DIMENSION_KEYS,
+  MVP_TEST_KEYS,
+  TEST_KEYS,
+} from "@/core/types/vocabulary";
+import { ADVANCED_TESTS } from "@/test-engine/tests";
 
 /**
  * Parameter-set invariants.
@@ -70,8 +81,17 @@ describe("metric registry", () => {
   });
 
   it("keeps the decision set small and deliberate", () => {
+    // Phase 6 raised the cap from 16 to 18 for four post-MVP metrics — one per new test that
+    // carries a distinct signal (reversal recovery, peak-speed error, vertical recoil
+    // deviation, stability under recoil). Anything else a new test produces is context.
     expect(DECISION_METRIC_KEYS.length).toBeGreaterThanOrEqual(10);
-    expect(DECISION_METRIC_KEYS.length).toBeLessThanOrEqual(16);
+    expect(DECISION_METRIC_KEYS.length).toBeLessThanOrEqual(18);
+  });
+
+  it("leaves the ADS tags and the horizontal recoil component out of the decision set", () => {
+    for (const key of ["adsFirstShotAccuracy", "adsTransitionTime", "recoilDeviationHorizontal"]) {
+      expect(DECISION_METRIC_KEYS, key).not.toContain(key);
+    }
   });
 });
 
@@ -249,7 +269,9 @@ describe("calibration_model_v1", () => {
   });
 
   it("sets sample minimums for every MVP test, rising with mode", () => {
-    for (const key of TEST_KEYS) {
+    // The post-MVP floors are declared by their definitions, not by this released set: a
+    // released parameter set is never edited to add them (SENS-BR-029).
+    for (const key of MVP_TEST_KEYS) {
       const minimum = params.minimumValidTrials[key];
       expect(minimum, key).toBeDefined();
       if (minimum === undefined) continue;
@@ -360,10 +382,169 @@ describe("reference_dist_provisional_v1", () => {
     }
   });
 
+  it("covers every v1 decision metric, so no v1 dimension is unscorable", () => {
+    const covered = new Set(params.statistics.map((statistic) => statistic.metricKey));
+    for (const key of SCORING_MODEL_V1.params.decisionMetricKeys) {
+      expect(covered.has(key), key).toBe(true);
+    }
+  });
+});
+
+describe("reference_dist_provisional_v2", () => {
+  const params = REFERENCE_DIST_PROVISIONAL_V2.params;
+
+  it("is still provisional, with percentiles suppressed", () => {
+    expect(params.provisional).toBe(true);
+    expect(params.percentilesEnabled).toBe(false);
+    expect(params.statistics.every((statistic) => statistic.provisional)).toBe(true);
+  });
+
   it("covers every decision metric, so no dimension is unscorable", () => {
     const covered = new Set(params.statistics.map((statistic) => statistic.metricKey));
     for (const key of DECISION_METRIC_KEYS) {
       expect(covered.has(key), key).toBe(true);
+    }
+  });
+
+  it("extends v1 without altering it", () => {
+    const v1 = REFERENCE_DIST_PROVISIONAL_V1.params.statistics;
+    expect(params.statistics.slice(0, v1.length)).toEqual(v1);
+    expect(params.statistics.length).toBeGreaterThan(v1.length);
+  });
+});
+
+/**
+ * scoring_model_v2 — the post-MVP tests enter the weights (Phase 6).
+ *
+ * Every invariant asserted on v1 holds here too, with one change that is the whole point of
+ * the version: the Tracking single-source exception is gone.
+ */
+describe("scoring_model_v2", () => {
+  const params = SCORING_MODEL_V2.params;
+
+  it("is the scoring version currently in force", () => {
+    expect(CURRENT_VERSIONS.scoring).toBe(SCORING_MODEL_V2.version);
+    expect(ALL_PARAMETER_SETS).toContain(SCORING_MODEL_V2);
+    expect(HISTORICAL_PARAMETER_SETS).toContain(SCORING_MODEL_V1);
+  });
+
+  it("defines all six dimensions with weights summing to 1", () => {
+    const defined = params.dimensions.map((dimension) => dimension.dimension);
+    expect([...defined].sort()).toEqual([...DIMENSION_KEYS].sort());
+    for (const dimension of params.dimensions) {
+      const total = dimension.weights.reduce((sum, weight) => sum + weight.weight, 0);
+      expect(total, dimension.dimension).toBeCloseTo(1, 9);
+    }
+  });
+
+  it("references only metrics and tests that exist", () => {
+    for (const dimension of params.dimensions) {
+      for (const weight of dimension.weights) {
+        expect(isKnownMetric(weight.metricKey), weight.metricKey).toBe(true);
+        for (const test of weight.fromTests) expect(TEST_KEYS).toContain(test);
+      }
+    }
+  });
+
+  it("feeds every dimension from at least two tests — the Tracking exception is closed", () => {
+    // doc 09 §9.15 said Tracking was single-sourced "until Strafe Tracking and Slide Tracking
+    // arrive in Phase 6". They have.
+    for (const dimension of params.dimensions) {
+      const tests = new Set(dimension.weights.flatMap((weight) => [...weight.fromTests]));
+      expect(tests.size, dimension.dimension).toBeGreaterThanOrEqual(2);
+    }
+    const tracking = params.dimensions.find((d) => d.dimension === "tracking");
+    const trackingTests = new Set(tracking?.weights.flatMap((w) => [...w.fromTests]));
+    expect(trackingTests.has("strafe-tracking")).toBe(true);
+    expect(trackingTests.has("slide-tracking")).toBe(true);
+  });
+
+  it("uses every post-MVP test somewhere", () => {
+    const used = new Set(
+      params.dimensions.flatMap((d) => d.weights.flatMap((w) => [...w.fromTests])),
+    );
+    for (const key of ADVANCED_TEST_KEYS) expect(used.has(key), key).toBe(true);
+  });
+
+  it("keeps Speed free of accuracy and Precision free of time — doc 14 §14.5", () => {
+    const speed = params.dimensions.find((d) => d.dimension === "speed");
+    const precision = params.dimensions.find((d) => d.dimension === "precision");
+    const speedMetrics = speed?.weights.map((w) => w.metricKey) ?? [];
+    for (const key of ["firstShotAccuracy", "flickErrorNorm", "overshootRate"]) {
+      expect(speedMetrics).not.toContain(key);
+    }
+    const precisionMetrics = precision?.weights.map((w) => w.metricKey) ?? [];
+    for (const key of ["adjustedAcquisitionTime", "switchingTime", "timeToTarget"]) {
+      expect(precisionMetrics).not.toContain(key);
+    }
+  });
+
+  it("weights Recoil for Control above everything else — doc 09 §9.12", () => {
+    const byDimension = new Map(
+      params.dimensions.map((d) => [
+        d.dimension,
+        d.weights.filter((w) => w.fromTests.includes("recoil")).reduce((s, w) => s + w.weight, 0),
+      ]),
+    );
+    const control = byDimension.get("control") ?? 0;
+    for (const [dimension, weight] of byDimension) {
+      if (dimension !== "control") expect(weight, dimension).toBeLessThan(control);
+    }
+  });
+
+  it("never scores reaction time in any dimension — SENS-BR-006", () => {
+    for (const dimension of params.dimensions) {
+      for (const weight of dimension.weights) {
+        expect(weight.metricKey).not.toBe("reactionTime");
+        expect(weight.fromTests).not.toContain("reaction");
+      }
+    }
+  });
+
+  it("has objective weights summing to 1 over eleven tests, MVP five in the majority", () => {
+    const total = params.objectiveTestWeights.reduce((sum, entry) => sum + entry.weight, 0);
+    expect(total).toBeCloseTo(1, 9);
+    expect(params.objectiveTestWeights).toHaveLength(11);
+    const mvp = params.objectiveTestWeights
+      .filter((entry) => (MVP_TEST_KEYS as readonly string[]).includes(entry.test))
+      .reduce((sum, entry) => sum + entry.weight, 0);
+    expect(mvp).toBeGreaterThan(0.5);
+    for (const entry of params.objectiveTestWeights) {
+      expect(entry.test).not.toBe("reaction");
+      expect(entry.test).not.toBe("comfort360");
+    }
+  });
+
+  it("declares decision metrics that all exist and are marked as such in the registry", () => {
+    for (const key of params.decisionMetricKeys) {
+      expect(getMetricDefinition(key)?.isDecisionMetric, key).toBe(true);
+    }
+    expect([...params.decisionMetricKeys].sort()).toEqual([...DECISION_METRIC_KEYS].sort());
+  });
+
+  it("inherits v1's floors, clip, scaling and disabled game profiles", () => {
+    expect(params.clipConstant).toBe(SCORING_MODEL_V1.params.clipConstant);
+    expect(params.displayScaling).toEqual(SCORING_MODEL_V1.params.displayScaling);
+    expect(params.gameWeightProfilesEnabled).toBe(false);
+    for (const [key, floor] of Object.entries(SCORING_MODEL_V1.params.robustScaleFloors)) {
+      expect(params.robustScaleFloors[key], key).toBe(floor);
+    }
+  });
+
+  it("points at the v2 reference distribution", () => {
+    expect(params.referenceDistributionVersion).toBe(REFERENCE_DIST_PROVISIONAL_V2.version);
+  });
+});
+
+describe("post-MVP test sample floors", () => {
+  it("are declared by every advanced definition, rising with mode", () => {
+    for (const definition of ADVANCED_TESTS) {
+      const quick = definition.minValidTrials("quick");
+      const standard = definition.minValidTrials("standard");
+      const advanced = definition.minValidTrials("advanced");
+      expect(quick, definition.key).toBeGreaterThan(0);
+      expect(standard, definition.key).toBeGreaterThanOrEqual(quick);
+      expect(advanced, definition.key).toBeGreaterThanOrEqual(standard);
     }
   });
 });
@@ -380,6 +561,20 @@ describe("the parameter-set registry", () => {
   it("agrees with the current-version map", () => {
     for (const set of ALL_PARAMETER_SETS) {
       expect(CURRENT_VERSIONS[set.kind]).toBe(set.version);
+    }
+  });
+
+  it("keeps superseded sets compiled and resolvable — SENS-BR-020", () => {
+    // A result generated under scoring_model_v1 must keep rendering under scoring_model_v1.
+    expect(findParameterSet("scoring_model_v1")).toBe(SCORING_MODEL_V1);
+    expect(findParameterSet("scoring_model_v2")).toBe(SCORING_MODEL_V2);
+    expect(findParameterSet("nope")).toBeUndefined();
+    expect(RELEASED_PARAMETER_SETS.length).toBe(
+      ALL_PARAMETER_SETS.length + HISTORICAL_PARAMETER_SETS.length,
+    );
+    for (const set of HISTORICAL_PARAMETER_SETS) {
+      expect(ALL_PARAMETER_SETS).not.toContain(set);
+      expect(Object.isFrozen(set.params), set.version).toBe(true);
     }
   });
 

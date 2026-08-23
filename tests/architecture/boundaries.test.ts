@@ -204,7 +204,7 @@ describe("a test is data, not code — doc 19 §19.9", () => {
       const body = stripComments(file.content);
       for (const match of body.matchAll(/(instructionsKey|displayNameKey):\s*"([^"]*)"/g)) {
         const value = match[2] ?? "";
-        if (!/^test\.[a-z0-9]+\.[A-Za-z]+$/.test(value)) {
+        if (!/^test\.[a-z0-9-]+\.[A-Za-z]+$/.test(value)) {
           offenders.push(`${file.path}: ${match[1]} = "${value}"`);
         }
       }

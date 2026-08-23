@@ -30,6 +30,14 @@ import { createSyntheticDefinition } from "../../helpers/engine-harness";
 
 const DEG_PER_COUNT = degreesPerCount(countsPer360FromCm(30, 800));
 
+/** What the hooks are told about the round; irrelevant to the MVP definitions under test. */
+const SURROUNDINGS = {
+  roundCountsPer360: countsPer360FromCm(30, 800),
+  baselineCountsPer360: countsPer360FromCm(30, 800),
+  searchParameter: "hipfire" as const,
+  fovHorizontalHalfDeg: 51.5,
+};
+
 interface Rig extends TrialDependencies {
   readonly context: TrialIdentity;
 }
@@ -67,6 +75,7 @@ function runner(
     deps: rig,
     startedAt,
     interTrialIntervalMs,
+    surroundings: SURROUNDINGS,
   });
 }
 
@@ -436,6 +445,7 @@ describe("what the trial counts", () => {
       deps: rig,
       startedAt: 1000,
       interTrialIntervalMs: 100,
+      surroundings: SURROUNDINGS,
     });
     trial.tick(1100);
 

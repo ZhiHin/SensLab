@@ -1,5 +1,5 @@
 import type { Angles } from "../../core/geometry/angular";
-import type { TrialQuality, TrialRecord } from "../contracts";
+import type { DisturbancePattern, TrialQuality, TrialRecord, TrialView } from "../contracts";
 import type { LiveTarget, TargetManager } from "../targets/target-manager";
 import type { EventView, SampleView } from "./ring-buffer";
 
@@ -51,6 +51,19 @@ export interface TrialObservation {
   readonly hit: boolean | null;
   /** Whether the trial's first button press was a hit. Null when no shot was fired. */
   readonly firstShotHit: boolean | null;
+  /**
+   * The disturbance applied to the camera this trial, or null (doc 09 §9.12).
+   *
+   * Recorded samples carry the *effective* crosshair. A derivation that wants the player's own
+   * movement evaluates this at each sample's held time and subtracts it.
+   */
+  readonly disturbance: DisturbancePattern | null;
+  /** The view the measured window ran under, or null for the hipfire view (doc 09 §9.13). */
+  readonly view: TrialView | null;
+  /** Sensitivity during the measured window, degrees per count. */
+  readonly degreesPerCount: number;
+  /** The player's measured reach in counts, or null when the comfort test has not run. */
+  readonly maxSingleSwipeCounts: number | null;
   readonly quality: TrialQuality;
 }
 

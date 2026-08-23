@@ -1,4 +1,4 @@
-import { ALL_PARAMETER_SETS } from "@/core/params";
+import { RELEASED_PARAMETER_SETS } from "@/core/params";
 import type { ParameterSet } from "@/core/params/types";
 import type { AlgorithmKind } from "@/core/types/vocabulary";
 import { canonicalJson } from "./canonical-json";
@@ -37,7 +37,7 @@ export function digestParameterSet(set: ParameterSet<unknown>): ParameterSetDige
 }
 
 export function allParameterSetDigests(): readonly ParameterSetDigest[] {
-  return ALL_PARAMETER_SETS.map(digestParameterSet);
+  return RELEASED_PARAMETER_SETS.map(digestParameterSet);
 }
 
 export class ParameterIntegrityError extends Error {

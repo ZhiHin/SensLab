@@ -113,6 +113,86 @@ const COPY: Readonly<Record<string, TestCopy>> = {
       "The physical room you have. It sets a limit on what can be recommended, so that you are " +
       "never given a sensitivity you cannot physically execute.",
   },
+
+  /* ------------------------------------------------------------ advanced (Phase 6) */
+  "wide-flick": {
+    name: "Wide Flick",
+    summary: "Large turns — 45°, 90°, 135° and 180° — balanced left and right.",
+    steps: [
+      "Click the target under your crosshair to start each trial facing forward.",
+      "A target appears far to one side, sometimes behind you. Turn to it and click it.",
+      "If you run out of pad and have to lift the mouse, that is fine — it is recorded, not penalised.",
+      "The direction alternates exactly, so neither side is favoured.",
+    ],
+    measures:
+      "Whether this sensitivity works for repositioning as well as for duels. A lift on a 180° " +
+      "turn is a fact about the sensitivity and your desk, and it feeds the physical limit on " +
+      "what can be recommended.",
+  },
+  "strafe-tracking": {
+    name: "Strafe Tracking",
+    summary: "Follow a target that reverses direction at unpredictable moments.",
+    steps: [
+      "Hold the fire button and keep the crosshair on the target for the whole trial.",
+      "The target moves sideways and reverses without warning. The timing cannot be predicted — do not try.",
+      "Release only when the trial ends.",
+    ],
+    measures:
+      "How quickly you re-acquire after a reversal and how steadily you hold between them. " +
+      "Reversal timing is drawn from a memoryless distribution, so anticipation is impossible by " +
+      "construction.",
+  },
+  "slide-tracking": {
+    name: "Slide Tracking",
+    summary: "Follow a target that accelerates to high speed, holds it, and brakes.",
+    steps: [
+      "Hold the fire button and keep the crosshair on the target.",
+      "The target slides a long way across your view, speeding up then slowing down, then comes back.",
+      "Stay with it through the fastest part. Release only when the trial ends.",
+    ],
+    measures:
+      "Whether this sensitivity supports fast, movement-heavy play. If the slide demands more " +
+      "reach than your comfortable swipe, the trial is marked as truncated and kept as evidence " +
+      "rather than scored.",
+  },
+  speed: {
+    name: "Speed",
+    summary: "Big targets, short timer. Go as fast as you can.",
+    steps: [
+      "Click the target under your crosshair to start each trial.",
+      "A large target appears nearby. Hit it as fast as you possibly can.",
+      "Accuracy barely matters here — that is deliberate. Be reckless.",
+    ],
+    measures:
+      "Pure speed, with accuracy demands removed. Paired with the Precision test, it is what " +
+      "makes your speed-versus-precision trade-off visible instead of blurred together.",
+  },
+  recoil: {
+    name: "Recoil Control",
+    summary: "Hold fire on a target while a generated recoil pattern pushes your aim.",
+    steps: [
+      "A target appears close to your crosshair. Press and hold the fire button on it.",
+      "While you hold, the view is pushed along a recoil pattern. Pull against it to stay on target.",
+      "The pattern is generated for each trial and is not any game's — you cannot memorise it, and you are not meant to.",
+      "Keep holding until the trial ends.",
+    ],
+    measures:
+      "How well you compensate for a sustained, unmemorised disturbance, and how steady that " +
+      "compensation is. It is weighted for control, not treated as a skill benchmark.",
+  },
+  ads: {
+    name: "ADS",
+    summary: "Aim through a simulated scope, alternating with normal trials.",
+    steps: [
+      "Click the target under your crosshair to start each trial.",
+      "On every second trial the view zooms in as you clear the start target, and your sensitivity changes with it.",
+      "Acquire and click the target in whichever view you are in.",
+    ],
+    measures:
+      "Scoped aiming performance and the cost of the transition into the scope. The scope is " +
+      "SensLab's own simulation — a narrower field of view and a matched sensitivity — and makes " +
+      "no claim about any particular game's zoom.",
+  },
 };
 
 const FALLBACK: TestCopy = {

@@ -13,8 +13,15 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const isCi = process.env["CI"] === "true";
 
+/**
+ * The production origin. Overridable so a developer with another app on 3000 — which
+ * `reuseExistingServer` would otherwise silently test against — can move this one aside.
+ */
+const PROD_PORT = Number(process.env["PLAYWRIGHT_PROD_PORT"] ?? 3000);
+const PROD_URL = `http://localhost:${PROD_PORT}`;
+
 /** The dev origin, used only by the `lab` project. */
-const DEV_PORT = 3001;
+const DEV_PORT = Number(process.env["PLAYWRIGHT_DEV_PORT"] ?? 3001);
 const DEV_URL = `http://localhost:${DEV_PORT}`;
 
 export default defineConfig({
@@ -32,7 +39,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
 
   use: {
-    baseURL: process.env["PLAYWRIGHT_BASE_URL"] ?? "http://localhost:3000",
+    baseURL: process.env["PLAYWRIGHT_BASE_URL"] ?? PROD_URL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -76,8 +83,8 @@ export default defineConfig({
     {
       // Against the production build, not the dev server: the security headers, the CSP nonce
       // and the static/dynamic route split all differ in development.
-      command: "npm run build && npm run start",
-      url: "http://localhost:3000",
+      command: `npm run build && npm run start -- --port ${PROD_PORT}`,
+      url: PROD_URL,
       reuseExistingServer: !isCi,
       timeout: 180_000,
       stdout: "pipe",

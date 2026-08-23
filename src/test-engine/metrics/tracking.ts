@@ -29,7 +29,7 @@ import { traceFor, type TrialTrace } from "./trace";
 /** High-pass corner separating correction activity from tracking movement (TUNABLE). */
 export const STABILITY_CUTOFF_HZ = 3;
 
-interface HeldWindow {
+export interface HeldWindow {
   /** Sample indices during which the fire button was held, in order. */
   readonly indices: readonly number[];
   /** The interval each held sample represents, milliseconds. */
@@ -44,7 +44,7 @@ interface HeldWindow {
  * released it, and discarding that segment would throw away the tail of every completed
  * tracking trial.
  */
-function heldWindow(observation: TrialObservation, trace: TrialTrace): HeldWindow {
+export function heldWindow(observation: TrialObservation, trace: TrialTrace): HeldWindow {
   const events = observation.events;
   const intervals: { from: number; to: number }[] = [];
   let openedAt: number | null = null;
@@ -83,7 +83,9 @@ function heldWindow(observation: TrialObservation, trace: TrialTrace): HeldWindo
   return { indices, durations, totalMs };
 }
 
-function heldFor(observation: TrialObservation): { trace: TrialTrace; held: HeldWindow } | null {
+export function heldFor(
+  observation: TrialObservation,
+): { trace: TrialTrace; held: HeldWindow } | null {
   const trace = traceFor(observation);
   if (trace.target === null || trace.radiusDeg === null) return null;
   const held = heldWindow(observation, trace);

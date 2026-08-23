@@ -1,13 +1,17 @@
 import type { Angles } from "../core/geometry/angular";
 import type { InvalidReason, TrialValidity } from "../core/types/vocabulary";
+import { degreesPerCount as degreesPerCountOf } from "../core/sensitivity/canonical";
 import type {
+  DisturbancePattern,
   MotionPattern,
   TargetSpec,
   TestDefinition,
   TestRng,
   TrialContext,
   TrialIdentity,
+  TrialView,
 } from "./contracts";
+import { evaluateDisturbance } from "./targets/disturbance";
 import type { Camera } from "./render/camera";
 import type { QualityMonitor } from "./quality/quality-monitor";
 import type { FrameMonitor, FrameWindowStats } from "./timing/frame-monitor";
@@ -66,6 +70,12 @@ export interface TrialOutcome {
   readonly variant: string | null;
   /** Scored targets destroyed during the measured window. */
   readonly kills: number;
+  /** The disturbance applied this trial, for the derivations to subtract back out. */
+  readonly disturbance: DisturbancePattern | null;
+  /** The view the measured window ran under, or null for the hipfire view. */
+  readonly view: TrialView | null;
+  /** Sensitivity during the measured window, degrees per count. */
+  readonly degreesPerCount: number;
 }
 
 export interface TrialDependencies {
@@ -93,6 +103,14 @@ export interface TrialRunner {
   readonly outcome: TrialOutcome | null;
 }
 
+/** What the trial's hooks are told about the round and session they run in. */
+export interface TrialSurroundings {
+  readonly roundCountsPer360: number;
+  readonly baselineCountsPer360: number;
+  readonly searchParameter: "hipfire" | "scope";
+  readonly fovHorizontalHalfDeg: number;
+}
+
 export interface TrialRunnerOptions {
   readonly definition: TestDefinition;
   readonly context: TrialIdentity;
@@ -101,12 +119,13 @@ export interface TrialRunnerOptions {
   readonly startedAt: number;
   /** Pre-computed inter-trial interval, drawn from the timing-jitter stream. */
   readonly interTrialIntervalMs: number;
+  readonly surroundings: TrialSurroundings;
 }
 
 const DEFAULT_MIN_MOVEMENT_COUNTS = 40;
 
 export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
-  const { definition, context, rng, deps, startedAt } = options;
+  const { definition, context, rng, deps, startedAt, surroundings } = options;
   const { camera, targets, buffers, frames, quality } = deps;
 
   let phase: TrialPhase = "armed";
@@ -133,6 +152,11 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
   const spawned: TargetSpec[] = [];
   let motion: MotionPattern = { kind: "static" };
   let variant: string | null = null;
+  let disturbance: DisturbancePattern | null = null;
+  let view: TrialView | null = null;
+  // The sensitivity to restore when the trial resolves; a view may change it mid-trial.
+  const roundDegreesPerCount = camera.degreesPerCount;
+  let measuredDegreesPerCount = roundDegreesPerCount;
 
   const killTarget = definition.killTarget ?? 1;
   const minMovementCounts = definition.minMovementCounts ?? DEFAULT_MIN_MOVEMENT_COUNTS;
@@ -153,13 +177,48 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
     const hookContext = contextAt();
     motion = definition.motionFor(rng, hookContext);
     variant = definition.variantFor?.(rng, hookContext) ?? null;
+    disturbance = definition.disturbanceFor?.(rng, hookContext) ?? null;
+    view = definition.viewFor?.(rng, hookContext) ?? null;
+
+    // A view's positioning sensitivity applies from the stimulus; its measured sensitivity and
+    // magnification apply once the window opens. Changing the view is a round-boundary-class
+    // event and never happens inside a measured window (doc 19 §19.4).
+    if (view !== null) camera.setDegreesPerCount(degreesPerCountOf(view.positioningCountsPer360));
+
     presentTargets(definition.spawn(rng, hookContext), now);
 
     // A reset target gates the measured window: until it is cleared, the trial is positioning,
     // not measuring.
     if (resetTargetsRemaining > 0) {
       stimulusAt = null;
+    } else {
+      applyMeasuredView();
     }
+  };
+
+  const applyMeasuredView = (): void => {
+    if (view === null) return;
+    camera.setMagnification(view.magnification);
+    camera.setDegreesPerCount(degreesPerCountOf(view.measuredCountsPer360));
+    measuredDegreesPerCount = camera.degreesPerCount;
+  };
+
+  const restoreView = (): void => {
+    camera.setDisturbance(0, 0);
+    if (view === null) return;
+    camera.setMagnification(1);
+    camera.setDegreesPerCount(roundDegreesPerCount);
+  };
+
+  /** Cumulative time the fire button has been held during the measured window, at `t`. */
+  const heldTimeAt = (t: number): number =>
+    heldMs + (buttonDown && buttonDownSince !== null ? Math.max(0, t - buttonDownSince) : 0);
+
+  /** Applies the disturbance for the current held time. A no-op for an undisturbed trial. */
+  const updateDisturbance = (t: number): void => {
+    if (disturbance === null || stimulusAt === null) return;
+    const offset = evaluateDisturbance(disturbance, heldTimeAt(t));
+    camera.setDisturbance(offset.yawDeg, offset.pitchDeg);
   };
 
   /**
@@ -188,9 +247,16 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
     ...context,
     cameraAngles: camera.angles(),
     killIndex: kills,
+    roundCountsPer360: surroundings.roundCountsPer360,
+    baselineCountsPer360: surroundings.baselineCountsPer360,
+    searchParameter: surroundings.searchParameter,
+    fovHorizontalHalfDeg: surroundings.fovHorizontalHalfDeg,
   });
 
   const openMeasuredWindow = (now: number): void => {
+    // The view switches *before* the origin is captured, so the measured window begins in the
+    // scoped state it is about to be measured in.
+    applyMeasuredView();
     stimulusAt = now;
     originAngles = camera.angles();
     camera.resetCounts();
@@ -209,6 +275,7 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
       buttonDownSince = now;
     }
 
+    restoreView();
     const frameStats = frames.closeWindow();
     const measuredStart = stimulusAt ?? startedAt;
     const measuredMs = Math.max(1, now - measuredStart);
@@ -240,6 +307,9 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
       heldRatio,
       variant,
       kills,
+      disturbance,
+      view,
+      degreesPerCount: measuredDegreesPerCount,
     };
 
     phase = "resolved";
@@ -339,6 +409,9 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
       if (environmental !== null) return resolve(now, environmental);
       if (frames.windowHasHitch()) return resolve(now, "frame_hitch");
 
+      // The rise continues while the button is held even if no input arrives.
+      updateDisturbance(now);
+
       const elapsed = now - stimulusAt;
       if (definition.endCondition === "duration") {
         // The clock is the success condition, so nothing the player does resolves it early.
@@ -356,6 +429,7 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
       // and turn a reaction measurement into an aiming one. The sample is still recorded, so
       // premature movement stays detectable.
       if (definition.cameraEnabled !== false) camera.applyCounts(dx, dy);
+      updateDisturbance(t);
 
       const angles = camera.angles();
       buffers.recordInput(t, angles.yawDeg, angles.pitchDeg);
@@ -381,6 +455,7 @@ export function createTrialRunner(options: TrialRunnerOptions): TrialRunner {
 
       buttonDown = true;
       buttonDownSince = t;
+      updateDisturbance(t);
 
       if (phase === "armed") {
         prematureShot = true;

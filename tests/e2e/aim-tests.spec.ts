@@ -10,17 +10,46 @@ import { expect, test } from "@playwright/test";
  */
 
 test.describe("the test index", () => {
-  test("lists the seven MVP tests and says which ones are scored", async ({ page }) => {
+  test("lists the seven MVP tests and the six advanced ones, and says which are scored", async ({
+    page,
+  }) => {
     await page.goto("/test");
 
     await expect(page.getByRole("heading", { level: 1 })).toContainText("THE BATTERY");
-    await expect(page.locator("[data-testid^='test-link-']")).toHaveCount(7);
+    await expect(page.locator("[data-testid^='test-link-']")).toHaveCount(13);
 
-    // Five scored, two not. The distinction is on the page because it is load-bearing: reaction
-    // and comfort deliberately never influence the recommendation.
-    await expect(page.locator('[data-category="scored"]')).toHaveCount(5);
+    // Eleven scored, two not. The distinction is on the page because it is load-bearing:
+    // reaction and comfort deliberately never influence the recommendation.
+    await expect(page.locator('[data-category="scored"]')).toHaveCount(11);
     await expect(page.locator('[data-category="baseline"]')).toHaveCount(1);
     await expect(page.locator('[data-category="constraint"]')).toHaveCount(1);
+
+    // The advanced six are listed under their own heading (Phase 6).
+    await expect(page.getByRole("heading", { name: /advanced tests/i })).toBeVisible();
+    for (const key of [
+      "wide-flick",
+      "strafe-tracking",
+      "slide-tracking",
+      "speed",
+      "recoil",
+      "ads",
+    ]) {
+      await expect(page.getByTestId(`test-link-${key}`)).toBeVisible();
+    }
+  });
+
+  test("briefs the recoil test as a generated pattern and the ADS test as a simulation", async ({
+    page,
+  }) => {
+    // The two claims a browser user must see before playing: no game's recoil is reproduced,
+    // and the scope is SensLab's own, not a game's.
+    await page.goto("/test/recoil");
+    await expect(page.getByTestId("briefing")).toBeVisible();
+    await expect(page.getByText(/not any game's/i)).toBeVisible();
+
+    await page.goto("/test/ads");
+    await expect(page.getByTestId("briefing")).toBeVisible();
+    await expect(page.getByText(/own simulation/i)).toBeVisible();
   });
 
   test("is honest that one test is not a recommendation", async ({ page }) => {

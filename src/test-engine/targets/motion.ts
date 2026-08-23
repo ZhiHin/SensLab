@@ -1,5 +1,5 @@
 import type { Angles } from "../../core/geometry/angular";
-import type { MotionPattern } from "../contracts";
+import type { MotionPattern, MotionSegment } from "../contracts";
 
 /**
  * Analytic target motion (doc 19 §19.1 principle 4, §19.6).
@@ -88,6 +88,20 @@ export function evaluateMotion(
       };
     }
 
+    case "segments": {
+      const { offset, velocity } = evaluateSegments(pattern.segments, elapsedMs);
+      if (pattern.axis === "yaw") {
+        return {
+          position: { yawDeg: origin.yawDeg + offset, pitchDeg: origin.pitchDeg },
+          velocityDegPerSec: { yaw: velocity, pitch: 0 },
+        };
+      }
+      return {
+        position: { yawDeg: origin.yawDeg, pitchDeg: origin.pitchDeg + offset },
+        velocityDegPerSec: { yaw: 0, pitch: velocity },
+      };
+    }
+
     case "random_smooth": {
       // A sum of sinusoids at incommensurate frequencies: continuous, differentiable, and
       // with no repeating period a player could learn within a trial.
@@ -120,6 +134,60 @@ export function evaluateMotion(
       };
     }
   }
+}
+
+/**
+ * Evaluates a piecewise constant-acceleration profile.
+ *
+ * Before the first segment the target sits at the first segment's start; after the last it
+ * holds that segment's end with zero velocity. Each segment is `s₀ + v₀·t + ½·a·t²`, so the
+ * result is exact at any instant — including one that falls between two rendered frames.
+ */
+export function evaluateSegments(
+  segments: readonly MotionSegment[],
+  elapsedMs: number,
+): { readonly offset: number; readonly velocity: number } {
+  const first = segments[0];
+  if (first === undefined) return { offset: 0, velocity: 0 };
+  if (elapsedMs <= first.startMs) return { offset: first.startOffsetDeg, velocity: 0 };
+
+  // Segments are few (tens at most) and evaluated thousands of times per trial; a linear scan
+  // beats a binary search here because the list is short and the branch is predictable.
+  for (const segment of segments) {
+    const localMs = elapsedMs - segment.startMs;
+    if (localMs < 0) break;
+    if (localMs <= segment.durationMs) return evaluateSegment(segment, localMs);
+  }
+
+  const last = segments[segments.length - 1] as MotionSegment;
+  return { offset: evaluateSegment(last, last.durationMs).offset, velocity: 0 };
+}
+
+function evaluateSegment(
+  segment: MotionSegment,
+  localMs: number,
+): { readonly offset: number; readonly velocity: number } {
+  const t = localMs / 1000;
+  const v0 = segment.startVelocityDegPerSec;
+  const a = segment.accelerationDegPerSec2;
+  return {
+    offset: segment.startOffsetDeg + v0 * t + 0.5 * a * t * t,
+    velocity: v0 + a * t,
+  };
+}
+
+/** The offset and velocity at the end of a segment — where the next one must begin. */
+export function segmentEnd(segment: MotionSegment): {
+  readonly offsetDeg: number;
+  readonly velocityDegPerSec: number;
+  readonly endMs: number;
+} {
+  const end = evaluateSegment(segment, segment.durationMs);
+  return {
+    offsetDeg: end.offset,
+    velocityDegPerSec: end.velocity,
+    endMs: segment.startMs + segment.durationMs,
+  };
 }
 
 /** True when a pattern never moves — lets the target manager skip re-evaluation. */

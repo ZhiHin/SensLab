@@ -1,4 +1,10 @@
-import type { MotionPattern, TargetSpec, TrialQuality } from "@/test-engine/contracts";
+import type {
+  MotionPattern,
+  TargetSpec,
+  TrialQuality,
+  DisturbancePattern,
+  TrialView,
+} from "@/test-engine/contracts";
 import type { TrialObservation } from "@/test-engine/telemetry/metric-collector";
 import { createTargetManager, type LiveTarget } from "@/test-engine/targets/target-manager";
 import { createTelemetryBuffers } from "@/test-engine/telemetry/ring-buffer";
@@ -48,6 +54,12 @@ export interface ObservationOptions {
   readonly firstShotHit?: boolean | null;
   readonly shots?: number;
   readonly quality?: Partial<TrialQuality>;
+  /** A disturbance the trial ran under (doc 09 §9.12). */
+  readonly disturbance?: DisturbancePattern | null;
+  /** The view the measured window ran under (doc 09 §9.13). */
+  readonly view?: TrialView | null;
+  readonly degreesPerCount?: number;
+  readonly maxSingleSwipeCounts?: number | null;
   readonly origin?: { readonly yawDeg: number; readonly pitchDeg: number };
 }
 
@@ -128,6 +140,10 @@ export function buildObservation(options: ObservationOptions): ObservationFixtur
     shots: options.shots ?? options.presses?.length ?? 0,
     hit: options.hit ?? (options.killAt !== undefined ? true : null),
     firstShotHit: options.firstShotHit ?? null,
+    disturbance: options.disturbance ?? null,
+    view: options.view ?? null,
+    degreesPerCount: options.degreesPerCount ?? 0.022,
+    maxSingleSwipeCounts: options.maxSingleSwipeCounts ?? null,
     quality: {
       cleanFrameFraction: 1,
       hitchCount: 0,

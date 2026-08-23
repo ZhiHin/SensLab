@@ -388,6 +388,149 @@ const DEFINITIONS: readonly MetricDefinition[] = Object.freeze([
     version: 1,
   }),
 
+  /* ------------------------------------------------ post-MVP tests (doc 09 §9.8–§9.13) */
+  define({
+    key: "liftDetected",
+    displayName: "Lift detected",
+    unit: "1",
+    direction: "lower_better",
+    aggregation: "proportion",
+    isDecisionMetric: false,
+    description:
+      "Whether the movement stream shows a lift or re-grip before the target was reached. A " +
+      "measured fact about the physical reach a sensitivity demands, not a performance score; " +
+      "feeds the physical-constraint model rather than the objective.",
+    version: 1,
+  }),
+  define({
+    key: "reversalRecoveryTime",
+    displayName: "Reversal recovery",
+    unit: "ms",
+    direction: "lower_better",
+    aggregation: "median",
+    isDecisionMetric: true,
+    description:
+      "After each direction reversal, the time until the crosshair is back inside the target " +
+      "for at least 50 ms. Median across the reversals in a trial.",
+    version: 1,
+  }),
+  define({
+    key: "peakSpeedTrackingError",
+    displayName: "Peak-speed tracking error",
+    unit: "1",
+    direction: "lower_better",
+    aggregation: "median",
+    isDecisionMetric: true,
+    description:
+      "Tracking error restricted to the segments where the target holds its peak speed — the " +
+      "part of a slide a sensitivity either supports or does not.",
+    version: 1,
+  }),
+  define({
+    key: "accelerationLagMs",
+    displayName: "Acceleration lag",
+    unit: "ms",
+    direction: "lower_better",
+    aggregation: "median",
+    isDecisionMetric: false,
+    description:
+      "Cross-correlation lag between target angular velocity and crosshair angular velocity " +
+      "during the acceleration phases of a slide.",
+    version: 1,
+  }),
+  define({
+    key: "pathTruncated",
+    displayName: "Path truncated",
+    unit: "1",
+    direction: "neutral",
+    aggregation: "proportion",
+    isDecisionMetric: false,
+    description:
+      "Whether the physical travel a slide demanded exceeded the player's measured comfortable " +
+      "swipe. Such trials are excluded from tracking scoring and retained as evidence for the " +
+      "constraint model (doc 09 §9.10).",
+    version: 1,
+  }),
+  define({
+    key: "recoilDeviationVertical",
+    displayName: "Vertical recoil deviation",
+    unit: "deg",
+    direction: "lower_better",
+    aggregation: "median",
+    isDecisionMetric: true,
+    description: "RMS of the vertical component of the aiming error during the recoil window.",
+    version: 1,
+  }),
+  define({
+    key: "recoilDeviationHorizontal",
+    displayName: "Horizontal recoil deviation",
+    unit: "deg",
+    direction: "lower_better",
+    aggregation: "median",
+    isDecisionMetric: false,
+    description: "RMS of the horizontal component of the aiming error during the recoil window.",
+    version: 1,
+  }),
+  define({
+    key: "recoilCompensationGain",
+    displayName: "Recoil compensation gain",
+    unit: "1",
+    direction: "neutral",
+    aggregation: "median",
+    isDecisionMetric: false,
+    description:
+      "OLS slope of the player's counter-movement against the applied recoil displacement. " +
+      "1.0 is perfect compensation; below is under-, above is over-compensation. Signed, because " +
+      "the direction of the failure is diagnostic.",
+    version: 1,
+  }),
+  define({
+    key: "recoilRecoveryTime",
+    displayName: "Recoil recovery",
+    unit: "ms",
+    direction: "lower_better",
+    aggregation: "median",
+    isDecisionMetric: false,
+    description:
+      "After the recoil burst ends, the time until the crosshair is back inside the target for " +
+      "at least 50 ms.",
+    version: 1,
+  }),
+  define({
+    key: "stabilityUnderRecoil",
+    displayName: "Stability under recoil",
+    unit: "1",
+    direction: "higher_better",
+    aggregation: "median",
+    isDecisionMetric: true,
+    description:
+      "Inverse of the high-frequency content of the aiming error during the recoil window. " +
+      "Low when compensation is a series of jerks rather than a steady pull.",
+    version: 1,
+  }),
+  define({
+    key: "adsTransitionTime",
+    displayName: "ADS transition",
+    unit: "ms",
+    direction: "lower_better",
+    aggregation: "median",
+    isDecisionMetric: false,
+    description:
+      "Movement onset measured from the moment the view zooms: the re-orientation cost of the " +
+      "transition into the scoped state. Present only on scoped trials.",
+    version: 1,
+  }),
+  define({
+    key: "adsFirstShotAccuracy",
+    displayName: "ADS first-shot accuracy",
+    unit: "1",
+    direction: "higher_better",
+    aggregation: "proportion",
+    isDecisionMetric: false,
+    description: "First-shot accuracy on scoped trials, tagged so the scope track can read it.",
+    version: 1,
+  }),
+
   /* ------------------------------------------------ derived / session (doc 10 §10.6) */
   define({
     key: "consistency",

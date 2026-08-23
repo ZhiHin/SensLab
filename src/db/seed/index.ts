@@ -5,6 +5,7 @@ import { METRIC_DEFINITIONS } from "@/core/metrics/registry";
 import { TEST_KEYS } from "@/core/types/vocabulary";
 import type { TestCategory, TestKey } from "@/core/types/vocabulary";
 import { LAUNCH_ADAPTERS } from "@/game-adapters/launch-games";
+import { getTestDefinition } from "@/test-engine/tests";
 import { canonicalJson } from "@/lib/canonical-json";
 import { newId, sha256 } from "@/lib/crypto";
 import { allParameterSetDigests } from "@/lib/parameter-registry";
@@ -49,6 +50,12 @@ const TEST_CATEGORY_BY_KEY: Readonly<Record<TestKey, TestCategory>> = {
   switching: "scored",
   precision: "scored",
   comfort360: "constraint",
+  "wide-flick": "scored",
+  "strafe-tracking": "scored",
+  "slide-tracking": "scored",
+  speed: "scored",
+  recoil: "scored",
+  ads: "scored",
 };
 
 const TEST_DISPLAY_NAME: Readonly<Record<TestKey, string>> = {
@@ -59,6 +66,12 @@ const TEST_DISPLAY_NAME: Readonly<Record<TestKey, string>> = {
   switching: "Target Switching",
   precision: "Precision",
   comfort360: "360 Comfort",
+  "wide-flick": "Wide Flick",
+  "strafe-tracking": "Strafe Tracking",
+  "slide-tracking": "Slide Tracking",
+  speed: "Speed",
+  recoil: "Recoil Control",
+  ads: "ADS",
 };
 
 /** The engine version these declarations require. Bumped when the contract changes. */
@@ -161,7 +174,18 @@ export async function seedTestDefinitions(db: Database): Promise<number> {
   const minimums = CALIBRATION_MODEL_V1.params.minimumValidTrials;
 
   for (const key of TEST_KEYS) {
-    const minimum = minimums[key];
+    // The MVP floors are part of the released calibration parameter set (`SENS-BR-029`);
+    // the post-MVP tests declare theirs, and a released set is never edited to add them.
+    const definition = getTestDefinition(key);
+    const minimum =
+      minimums[key] ??
+      (definition === undefined
+        ? undefined
+        : {
+            quick: definition.minValidTrials("quick"),
+            standard: definition.minValidTrials("standard"),
+            advanced: definition.minValidTrials("advanced"),
+          });
     const config = {
       minValidTrials: minimum ?? { quick: 0, standard: 0, advanced: 0 },
       // Sensitivity-independent tests run once per session rather than once per candidate.
