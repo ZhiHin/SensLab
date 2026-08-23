@@ -341,3 +341,23 @@ html[data-motion="reduced"] *::after {
   transition: none !important;
   animation: none !important;
 }
+
+/* Aim DNA reveal (doc 25 §25.9): the bands draw in once. Static under reduced motion. */
+.aim-dna-band line,
+.aim-dna-band circle {
+  animation: dna-reveal var(--duration-reveal) var(--ease-instrument) both;
+}
+@keyframes dna-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aim-dna-band line,
+  .aim-dna-band circle {
+    animation: none;
+  }
+}

@@ -81,6 +81,13 @@ export default async function ShellPage() {
               <Link href="/games" className="type-label text-text-2 hover:text-text-1">
                 See exactly what has been measured →
               </Link>
+              <Link
+                href="/calibrate"
+                className="self-start border border-text-1 px-6 py-3 type-label text-text-1 hover:bg-surface-2"
+                data-testid="start-calibration-link"
+              >
+                Start calibration
+              </Link>
             </div>
           </Panel>
 

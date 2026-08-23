@@ -50,6 +50,13 @@ export interface BootstrapOutcome {
   /** Per-pair differences: `key = "i:j"`, value = the resampled distribution's interval. */
   readonly pairIntervals: ReadonlyMap<string, CredibleInterval>;
   readonly resamplesUsed: number;
+  /**
+   * The quadratic coefficients of every resample that produced a surface, concave or not.
+   *
+   * Retained so the response curve can show the bootstrap *envelope* of the fit — the soft
+   * band doc 25 §25.9 draws around the curve — without re-running the bootstrap.
+   */
+  readonly surfaceSamples: readonly (readonly number[])[];
 }
 
 /** Groups trials by candidate so a resample draws within candidate, not across the session. */
@@ -82,6 +89,7 @@ function resample(
 export function bootstrapPipeline(input: BootstrapInput): BootstrapOutcome {
   const grouped = groupByCandidate(input.trials);
   const vertexSamples: number[] = [];
+  const surfaceSamples: (readonly number[])[] = [];
   const pairSamples = new Map<string, number[]>();
   let concave = 0;
   let used = 0;
@@ -121,6 +129,7 @@ export function bootstrapPipeline(input: BootstrapInput): BootstrapOutcome {
     }
 
     const surface = fitResponseSurface(estimates);
+    if (surface !== null) surfaceSamples.push(surface.coefficients);
     if (surface?.concave === true && surface.vertexX !== null) {
       concave += 1;
       vertexSamples.push(surface.vertexX as number);
@@ -152,7 +161,40 @@ export function bootstrapPipeline(input: BootstrapInput): BootstrapOutcome {
     concaveFraction: used === 0 ? 0 : concave / used,
     pairIntervals,
     resamplesUsed: used,
+    surfaceSamples,
   };
+}
+
+export interface FitBandPoint {
+  readonly x: number;
+  readonly low: number;
+  readonly high: number;
+}
+
+/**
+ * Samples the bootstrap fit envelope across a range of x.
+ *
+ * At each x the band is the credible interval of the resampled surfaces' values there. It is
+ * not a confidence band on the *peak* — that is `vertexInterval` — but on the curve itself,
+ * and it is what makes a flat result look flat rather than merely unlabelled.
+ */
+export function fitEnvelope(
+  outcome: BootstrapOutcome,
+  range: { readonly low: number; readonly high: number },
+  level: number,
+  points = 41,
+): readonly FitBandPoint[] {
+  if (outcome.surfaceSamples.length < 20 || !(range.high > range.low)) return [];
+  const out: FitBandPoint[] = [];
+  for (let i = 0; i < points; i += 1) {
+    const x = range.low + ((range.high - range.low) * i) / (points - 1);
+    const values = outcome.surfaceSamples
+      .map((c) => (c[0] ?? 0) + (c[1] ?? 0) * x + (c[2] ?? 0) * x * x)
+      .sort((a, b) => a - b);
+    const interval = percentileInterval(values, median(values), level);
+    out.push({ x, low: interval.low, high: interval.high });
+  }
+  return out;
 }
 
 /**

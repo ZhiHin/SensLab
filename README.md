@@ -13,16 +13,28 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 6 — Advanced Tests.** The project follows a phased plan defined in
+**Phase 7 — Results and Aim DNA.** The project follows a phased plan defined in
 [`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
 authentication, the pure-domain maths, CI — the engine that runs an aim session, all thirteen
 aim tests doc 09 specifies with every metric doc 10 defines, the statistical engine that turns
-those measurements into a response curve and a recommendation, and the complete machinery for
-turning that recommendation into a game setting.
+those measurements into a response curve and a recommendation, the complete machinery for
+turning that recommendation into a game setting, and — new in Phase 7 — the end-to-end loop a
+player actually runs: `/calibrate` starts a blinded session, the server plans each round and
+decides when to stop, and `/results/[id]` shows the recommendation as an **object, not a
+number**.
 
 **The calibration is deterministic statistics, not AI** (`SENS-BR-002`). It is a noisy
 one-dimensional derivative-free search with a drift model, and it **refuses to invent a peak**:
 a flat or indistinguishable response returns a range and says why (`SENS-BR-017`).
+
+**A result is a recommendation with its evidence attached.** The canonical value in counts
+and cm/360, a high-performance range (the credible interval) and a wider comfort range (the
+plateau the minimum detectable effect cannot separate), a seven-component **confidence index**
+that is a diagnostic and never a probability (doc 15), six dimension scores against a
+provisional reference with an **Aim DNA** profile classified by fixed rules and explained from
+the measured numbers (`SENS-BR-036`), and the **response curve** with its bootstrap band. All of
+it is persisted with the parameter-set versions that produced it, so it can be reproduced
+exactly later (`SENS-BR-030`).
 
 **The full test battery is built.** The six post-MVP tests — Wide Flick, Strafe Tracking, Slide
 Tracking, Speed, Recoil Control and ADS — run through the same engine as the MVP seven, with
@@ -46,8 +58,8 @@ now built so that a constant **cannot** be shipped without closing one (`SENS-BR
 | 3     | The MVP aim tests and their metrics            | Complete — [report](docs/implementation/phase-3-completion.md)     |
 | 4     | Calibration and statistical engine             | Complete — [report](docs/implementation/phase-4-completion.md)     |
 | 5     | Verified game adapters                         | Complete — [report](docs/implementation/phase-5-completion.md)     |
-| **6** | **Advanced aim tests**                         | **Complete** — [report](docs/implementation/phase-6-completion.md) |
-| 7     | Results and Aim DNA                            | Not started                                                        |
+| 6     | Advanced aim tests                             | Complete — [report](docs/implementation/phase-6-completion.md)     |
+| **7** | **Results and Aim DNA**                        | **Complete** — [report](docs/implementation/phase-7-completion.md) |
 | 8     | Validation and fine-tuning                     | Not started                                                        |
 | 9     | Accounts, history, hardware profiles           | Not started                                                        |
 | 10    | UI/UX polish and the landing experience        | Not started                                                        |
@@ -277,11 +289,17 @@ no surface can opt out. `/games` publishes the whole register.
 | Unit         | Vitest                   | `core/`, `game-adapters/` and `test-engine/`. Gated at 90% branch coverage |
 | Architecture | Vitest                   | Module boundaries, determinism, secret hygiene                             |
 | Integration  | Vitest + real PostgreSQL | Ownership, constraints, triggers, ingest idempotency, auth                 |
-| E2E          | Playwright               | Shell, auth screens, security headers, health, the engine harness          |
+| E2E          | Playwright               | Shell, auth, headers, health, the engine harness, the results experience   |
 
 Playwright serves the production build on port 3000 by default. If another app holds that port,
 set `PLAYWRIGHT_PROD_PORT` (and `PLAYWRIGHT_DEV_PORT` for the `lab` project) — the config will
 otherwise reuse whatever is listening there.
+
+The results specs need real recommendations to look at. Playwright's global setup runs
+`scripts/e2e-fixtures.ts` against the database: it creates a fixture account, drives two quick
+calibration sessions through the real server loop with a synthetic player and pinned seeds (one
+that finds a peak, one that cannot separate its candidates), and writes the recommendation ids
+to `test-results/e2e-fixtures.json`. The database must be up for `npm run test:e2e`.
 
 The engine is tested through a **headless deterministic harness**: the real engine, driven by a
 scripted clock and a scripted input source with a recording renderer. That is what makes it

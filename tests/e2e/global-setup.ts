@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { config } from "dotenv";
 import postgres from "postgres";
 
@@ -27,7 +28,17 @@ export default async function globalSetup(): Promise<void> {
   const sql = postgres(url, { max: 1, connect_timeout: 5, onnotice: () => {} });
   try {
     await sql`delete from rate_limit_counters`;
+    // The results fixtures are rebuilt every run; stale sessions from previous runs go first so
+    // the fixture account never accumulates.
+    await sql`delete from test_sessions where user_id in (select id from users where email = ${"e2e-results@senslab.test"})`;
   } finally {
     await sql.end({ timeout: 5 });
   }
+
+  // Results fixtures: a real session loop with pinned seeds, through the same script a
+  // developer can run by hand. Shimming `server-only` the way the integration suite does.
+  execFileSync("npx", ["tsx", "--tsconfig", "tsconfig.scripts.json", "scripts/e2e-fixtures.ts"], {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
 }

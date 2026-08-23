@@ -4,6 +4,7 @@ import type { RoundAggregate, SessionPlan, TestDefinition } from "@/test-engine/
 import { createEngine } from "@/test-engine/engine";
 import { createStandardCollector } from "@/test-engine/metrics";
 import { createSingleTestPlan } from "@/test-engine/plan/single-test";
+import { ALL_TESTS, getTestDefinition } from "@/test-engine/tests";
 import { createHarness } from "./engine-harness";
 
 /**
@@ -38,6 +39,13 @@ export interface BatteryRunOptions {
    */
   readonly maxStepDeg?: number;
   readonly plan?: SessionPlan;
+  /**
+   * A skill multiplier per candidate index, so a synthetic session can have a real optimum:
+   * the player's hand-speed cap and reaction are scaled by it. 1 is the baseline.
+   */
+  readonly skillByCandidate?: ReadonlyMap<number, number>;
+  /** Seed for the player's own noise, so a synthetic session is reproducible. */
+  readonly playerSeed?: string;
 }
 
 export interface BatteryRunOutcome {
@@ -46,9 +54,19 @@ export interface BatteryRunOutcome {
   readonly frames: number;
 }
 
+/**
+ * Runs a whole plan — every test it names — with the same synthetic player.
+ *
+ * The player reads the current round's definition from the engine's stage, so one plan can
+ * mix acquisition, hold and comfort tests exactly as a calibration round does.
+ */
+export function runPlan(plan: SessionPlan, options: BatteryRunOptions = {}): BatteryRunOutcome {
+  return runBattery(ALL_TESTS[1] as TestDefinition, { ...options, plan, allDefinitions: true });
+}
+
 export function runBattery(
   definition: TestDefinition,
-  options: BatteryRunOptions = {},
+  options: BatteryRunOptions & { readonly allDefinitions?: boolean } = {},
 ): BatteryRunOutcome {
   const { clock, input, renderer } = createHarness(1000);
   const aggregates: RoundAggregate[] = [];
@@ -79,7 +97,7 @@ export function runBattery(
 
   const engine = createEngine({
     plan,
-    definitions: [definition],
+    definitions: options.allDefinitions === true ? ALL_TESTS : [definition],
     clock,
     input,
     renderer,
@@ -97,7 +115,8 @@ export function runBattery(
   // *was* `reactionFrames` ago.
   const seenPositions: { yawDeg: number; pitchDeg: number }[] = [];
 
-  for (let frame = 0; frame < 60_000 && engine.state === "running"; frame += 1) {
+  const frameBudget = options.allDefinitions === true ? 2_000_000 : 60_000;
+  for (let frame = 0; frame < frameBudget && engine.state === "running"; frame += 1) {
     clock.tick(BATTERY_FRAME_MS);
     const now = clock.now();
     const drawn = renderer.lastFrame;
@@ -106,8 +125,26 @@ export function runBattery(
     const camera = engine.camera;
     const perCount = camera.degreesPerCount;
     const active = engine.trialPhase === "active";
+    const stage = engine.stage;
+    const current =
+      stage.kind === "round" ? (getTestDefinition(stage.round.testKey) ?? definition) : definition;
 
-    if (definition.key === "comfort360") {
+    // The free-aim warm-up has targets but no round; the player acquires them like any other.
+    const candidateIndex = stage.kind === "round" ? stage.round.candidateIndex : null;
+    const skill =
+      candidateIndex === null ? 1 : (options.skillByCandidate?.get(candidateIndex) ?? 1);
+
+    if (current.key === "reaction") {
+      // Reaction: click as soon as the target appears; the camera is disabled anyway.
+      if (active && drawn.targets.living().length > 0 && !holding) {
+        input.click(now + 0.5);
+        holding = true;
+      }
+      if (!active) holding = false;
+      continue;
+    }
+
+    if (current.key === "comfort360") {
       if (!active) {
         sweepFrames = 0;
         continue;
@@ -133,9 +170,12 @@ export function runBattery(
 
     const live = drawn.targets.positionAt(target, now);
     seenPositions.push(live);
+    // A less skilled candidate reacts later as well as moving slower, so tracking tests see
+    // the difference too — otherwise only the acquisition tests would carry the signal.
+    const delay = reactionFrames + Math.round((1 - Math.min(1, skill)) * 24);
     const position =
-      seenPositions.length > reactionFrames
-        ? (seenPositions[seenPositions.length - 1 - reactionFrames] as typeof live)
+      seenPositions.length > delay
+        ? (seenPositions[seenPositions.length - 1 - delay] as typeof live)
         : live;
 
     // The camera the player sees includes any disturbance. A perfect compensator aims at the
@@ -147,15 +187,16 @@ export function runBattery(
     let stepYaw = aimYaw - camera.yawDeg;
     let stepPitch = aimPitch - camera.pitchDeg;
     const stepLength = Math.hypot(stepYaw, stepPitch);
-    if (stepLength > maxStepDeg) {
-      stepYaw *= maxStepDeg / stepLength;
-      stepPitch *= maxStepDeg / stepLength;
+    const cap = maxStepDeg * skill;
+    if (stepLength > cap) {
+      stepYaw *= cap / stepLength;
+      stepPitch *= cap / stepLength;
     }
     const dx = stepYaw / perCount;
     const dy = -stepPitch / perCount;
     if (dx !== 0 || dy !== 0) input.move(now, dx, dy);
 
-    if (definition.shootingModel === "hold") {
+    if (current.shootingModel === "hold") {
       if (active && !holding) {
         input.press(now + 0.25);
         holding = true;
@@ -163,7 +204,10 @@ export function runBattery(
       continue;
     }
 
-    input.click(now + 0.5);
+    // Only shoot once the step has landed the crosshair on the target; a competent player
+    // does not fire mid-flick. Skill scales how tight "on" has to be.
+    const remaining = Math.hypot(aimYaw - camera.yawDeg, aimPitch - camera.pitchDeg);
+    if (remaining <= target.spec.angularRadiusDeg * Math.min(1, skill)) input.click(now + 0.5);
   }
 
   const measured = aggregates.find((round) => !round.isPractice);

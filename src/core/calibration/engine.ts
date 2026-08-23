@@ -18,6 +18,7 @@ import { decideNextBracket } from "./response-surface";
 import {
   anyPairDistinguishable,
   bootstrapPipeline,
+  fitEnvelope,
   minimumDetectableEffect,
   type BootstrapOutcome,
 } from "./significance";
@@ -274,7 +275,7 @@ export function runCalibration(input: CalibrationInput): CalibrationResult {
     xStar,
     countsPer360: xStar === null ? null : countsPer360(toCountsPer360(xStar)),
     credibleInterval: peak ? latest.bootstrap.vertexInterval : null,
-    comfortRange: comfortRange(input, latest, xStar === null ? null : (xStar as number)),
+    comfortRange: comfortRange(input, latest, last, xStar === null ? null : (xStar as number)),
     candidates,
     estimates: latest.estimates,
     rounds: roundResults,
@@ -282,6 +283,11 @@ export function runCalibration(input: CalibrationInput): CalibrationResult {
     drift: last.drift,
     anchorRetest: anchor,
     minimumDetectableEffect: last.minimumDetectableEffect,
+    fitBand: fitEnvelope(
+      latest.bootstrap,
+      measuredRange(usable),
+      input.params.statistics.significanceLevel,
+    ),
     stopReason: last.decision,
     constraint: input.spec.constraint,
     seed: input.spec.seed,
@@ -289,25 +295,77 @@ export function runCalibration(input: CalibrationInput): CalibrationResult {
   };
 }
 
+/** The span of sensitivities actually measured, padded a little so the curve has margins. */
+function measuredRange(estimates: readonly CandidateEstimate[]): {
+  readonly low: number;
+  readonly high: number;
+} {
+  const xs = estimates.map((estimate) => estimate.x as number);
+  const low = Math.min(...xs);
+  const high = Math.max(...xs);
+  const pad = Math.max(0.05, (high - low) * 0.15);
+  return { low: low - pad, high: high + pad };
+}
+
 /**
- * The comfort range: sensitivities that are not distinguishable from the best one.
+ * The comfort range (doc 16 §16.3): sensitivities whose fitted performance is statistically
+ * indistinguishable from the peak.
  *
- * Always present, including when no peak was found — because "we could not separate these" is
- * still useful information, and it is the honest thing to offer instead of a point.
+ * ```
+ * comfortRange = { x : α̂(x*) − α̂(x) ≤ MDE }
+ * ```
+ *
+ * For a concave quadratic the drop from the vertex is `|b₂|·(x − x*)²`, so the plateau is
+ * `x* ± √(MDE / |b₂|)` in closed form. It is clipped to the span of sensitivities actually
+ * measured — the plateau beyond the last candidate is extrapolation — and widened to contain
+ * the high-performance interval, which doc 16 asserts as an invariant: "where the peak is"
+ * can never be a broader claim than "what you can use".
+ *
+ * Because a response curve is flat near its maximum this is typically **wider** than the
+ * credible interval on the peak, and it is usually the more actionable number. Without a
+ * peak it is the span of candidates that could not be told apart, which is the only
+ * sensitivity statement an indistinguishable session can make.
  */
 function comfortRange(
   input: CalibrationInput,
   latest: { estimates: readonly CandidateEstimate[]; bootstrap: BootstrapOutcome },
+  last: CalibrationRoundResult,
   xStar: number | null,
 ): { readonly lowCm360: number; readonly highCm360: number } {
   const usable = latest.estimates.filter((estimate) => !estimate.insufficient);
   const xs = usable.map((estimate) => estimate.x as number);
+  const measuredLow = Math.min(...xs);
+  const measuredHigh = Math.max(...xs);
 
-  // Prefer the bootstrap interval on the peak; fall back to the span of candidates that could
-  // not be told apart from the best one.
-  const interval = latest.bootstrap.vertexInterval;
-  const low = interval !== null && xStar !== null ? interval.low : Math.min(...xs);
-  const high = interval !== null && xStar !== null ? interval.high : Math.max(...xs);
+  let low = measuredLow;
+  let high = measuredHigh;
+
+  const curvature = last.fit?.coefficients[2];
+  const mde = last.minimumDetectableEffect;
+  if (
+    xStar !== null &&
+    last.fit?.concave === true &&
+    curvature !== undefined &&
+    curvature < 0 &&
+    Number.isFinite(mde) &&
+    mde > 0
+  ) {
+    const halfWidth = Math.sqrt(mde / -curvature);
+    low = Math.max(measuredLow, xStar - halfWidth);
+    high = Math.min(measuredHigh, xStar + halfWidth);
+
+    const interval = latest.bootstrap.vertexInterval;
+    if (interval !== null) {
+      low = Math.min(low, interval.low);
+      high = Math.max(high, interval.high);
+    }
+  }
+
+  // Both ranges are clipped by the physical constraint (doc 16 §16.3). Not by the search
+  // domain: a candidate that was measured is a fact wherever it sat, and the constraint is
+  // the only bound that says the player *cannot use* a value.
+  const ceiling = constraintHighX(input);
+  if (ceiling !== null && ceiling > low) high = Math.min(high, ceiling);
 
   const toCm = (x: number): number =>
     cmPer360FromCounts(countsPer360(toCountsPer360(x)), input.deviceDpi) as unknown as number;
@@ -380,6 +438,7 @@ function insufficient(
     },
     anchorRetest: null,
     minimumDetectableEffect: last?.minimumDetectableEffect ?? Number.POSITIVE_INFINITY,
+    fitBand: [],
     stopReason: last?.decision ?? "stop_budget",
     constraint: input.spec.constraint,
     seed: input.spec.seed,

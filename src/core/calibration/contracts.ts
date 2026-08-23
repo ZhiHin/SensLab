@@ -148,6 +148,11 @@ export interface CalibrationResult {
   readonly drift: DriftModelSummary;
   readonly anchorRetest: AnchorRetestSummary | null;
   readonly minimumDetectableEffect: number;
+  /**
+   * The bootstrap envelope of the fitted curve, sampled across the measured range of x
+   * (log2 counts/360). Empty when too few resamples produced a surface.
+   */
+  readonly fitBand: readonly { readonly x: number; readonly low: number; readonly high: number }[];
   readonly stopReason: CalibrationDecision;
   readonly constraint: ParameterConstraint;
   readonly seed: bigint;

@@ -7,6 +7,7 @@ import { getTestDefinition } from "@/test-engine/tests";
 import { useAimEngine } from "@/test-engine/mount";
 import { abandonRunAction, completeRunAction, startRunAction, submitRoundAction } from "./actions";
 import { copyFor } from "./copy";
+import { MeasuringLayer } from "./measuring-layer";
 
 /**
  * The test surface (doc 04 stage 7, doc 09 §9.0.8).
@@ -80,18 +81,6 @@ export function TestSurface({
     onRoundComplete,
     onFinished,
   });
-
-  const {
-    attachCanvas,
-    state,
-    stage,
-    trialPhase,
-    pauseReason,
-    start,
-    resume,
-    restartRound,
-    abort,
-  } = engine;
 
   // Completing the run is a separate call from the last round upload, and must happen after it:
   // a session marked `completed` before its final round landed would read as finished-and-empty.
@@ -213,82 +202,14 @@ export function TestSurface({
         </section>
       ) : null}
 
-      {/*
-        The measuring view is a fixed full-viewport layer, and that is a correctness decision
-        rather than a stylistic one. The engine pauses on a canvas resize, because a resize
-        changes the angular-to-pixel mapping mid-session. A canvas laid out in the document
-        flow is resized by anything that reflows the page — a header unmounting, a scrollbar
-        appearing — so the session would pause itself the moment it started. Fixed to the
-        viewport, with the page behind locked, nothing the surface does can change its size.
-      */}
       {running && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-void">
-          <canvas
-            ref={attachCanvas}
-            data-testid="test-canvas"
-            className="block max-h-full w-full max-w-[min(100vw,177.78vh)]"
-            style={{ aspectRatio: "16 / 9" }}
-          />
-
-          {state !== "running" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-void/90 text-center">
-              <p className="type-label" data-testid="overlay-state">
-                {state === "paused" ? `Paused — ${pauseReason ?? "user"}` : "Ready"}
-              </p>
-
-              {state === "paused" ? (
-                <div className="flex flex-wrap justify-center gap-3">
-                  <button
-                    type="button"
-                    className="border border-hairline px-5 py-2 type-label"
-                    onClick={() => void resume()}
-                    data-testid="resume-button"
-                  >
-                    Resume
-                  </button>
-                  <button
-                    type="button"
-                    className="border border-hairline px-5 py-2 type-label"
-                    onClick={() => restartRound()}
-                    data-testid="restart-button"
-                  >
-                    Restart round
-                  </button>
-                  <button
-                    type="button"
-                    className="border border-hairline px-5 py-2 type-label"
-                    onClick={() => {
-                      abort();
-                      if (sessionId !== null) void abandonRunAction(sessionId);
-                      setPhase("finished");
-                    }}
-                    data-testid="abandon-button"
-                  >
-                    Stop the test
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="border border-hairline px-6 py-3 type-label"
-                  onClick={() => void start()}
-                  data-testid="lock-button"
-                >
-                  Click to begin
-                </button>
-              )}
-
-              <p className="max-w-[46ch] text-sm text-text-3">
-                Your cursor is captured while the test runs. Press Escape to pause.
-              </p>
-            </div>
-          )}
-
-          {/* Procedural state only — no score, no accuracy, no candidate (`SENS-BR-007`). */}
-          <p className="sr-only" aria-live="polite" data-testid="trial-phase">
-            {stage.kind === "round" && trialPhase === "active" ? "Measuring" : "Get ready"}
-          </p>
-        </div>
+        <MeasuringLayer
+          engine={engine}
+          onAbandon={() => {
+            if (sessionId !== null) void abandonRunAction(sessionId);
+            setPhase("finished");
+          }}
+        />
       )}
 
       {phase === "finished" && (

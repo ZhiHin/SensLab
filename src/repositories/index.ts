@@ -9,3 +9,4 @@ export * as gameRepo from "./game-repo";
 export * as sessionRepo from "./session-repo";
 export * as rateLimitRepo from "./rate-limit-repo";
 export * as calibrationRepo from "./calibration-repo";
+export * as recommendationRepo from "./recommendation-repo";

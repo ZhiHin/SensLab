@@ -27,6 +27,7 @@ import { calibrationRepo, sessionRepo } from "@/repositories";
 import type { Actor } from "@/repositories/actor";
 import { withTransaction } from "@/repositories/transaction";
 import { notFound } from "@/lib/errors";
+import { scoredTestsForMode } from "@/test-engine/tests";
 
 /**
  * The server-side adaptive step (doc 13, doc 23 §23.4).
@@ -321,18 +322,29 @@ export async function analyseCalibration(
   return { result, nextBracket: last?.nextBracket ?? null };
 }
 
-/** The per-candidate sample floor, taken from the most demanding scored test in the mode. */
+/**
+ * The per-candidate sample floor: the sum of the floors of the tests the mode actually runs.
+ *
+ * Summed, because a candidate's block runs every scored test in the roster and its usable
+ * sample is the total across them. Taken over the **mode's roster**, not the MVP five — Quick
+ * runs three tests, and a floor that counted the other two would flag every Quick candidate as
+ * insufficient. That is exactly what happened the first time a real Quick session ran, which
+ * is why the roster is the authority here rather than a list of keys.
+ */
 function minimumTrials(mode: SessionMode): number {
   const minimums = CALIBRATION_PARAMS.minimumValidTrials;
-  const scored = ["flick", "micro", "tracking", "switching", "precision"];
-  const perTest = scored.map((key) => {
-    const entry = minimums[key];
-    if (entry === undefined) return 0;
-    return mode === "advanced" ? entry.advanced : mode === "quick" ? entry.quick : entry.standard;
-  });
-  // Summed: a candidate's block runs every scored test, so its usable sample is the total across
-  // them, not the largest single one.
-  return perTest.reduce((sum, value) => sum + value, 0);
+  return scoredTestsForMode(mode).reduce((sum, definition) => {
+    const entry = minimums[definition.key];
+    const floor =
+      entry === undefined
+        ? definition.minValidTrials(mode)
+        : mode === "advanced"
+          ? entry.advanced
+          : mode === "quick"
+            ? entry.quick
+            : entry.standard;
+    return sum + floor;
+  }, 0);
 }
 
 /** Re-exported for callers building a spec without importing the core module directly. */

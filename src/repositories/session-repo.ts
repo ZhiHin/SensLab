@@ -327,3 +327,65 @@ export async function countRounds(sessionId: string, tx?: Executor): Promise<num
     .where(eq(testRounds.sessionId, sessionId));
   return rows.length;
 }
+
+/**
+ * The measured comfort swipe for a session, in degrees at the baseline sensitivity.
+ *
+ * The engine emits the angle it can measure exactly (`maxSingleSwipeDeg`); converting to
+ * centimetres needs the baseline cm/360, which the caller has and the engine never does.
+ */
+export async function findComfortSwipeDeg(
+  sessionId: string,
+  tx?: Executor,
+): Promise<number | null> {
+  const db = executor(tx);
+  const rows = await db
+    .select({ value: roundMetrics.value })
+    .from(roundMetrics)
+    .innerJoin(testRounds, eq(testRounds.id, roundMetrics.roundId))
+    .innerJoin(testDefinitions, eq(testDefinitions.id, testRounds.testDefinitionId))
+    .where(
+      and(
+        eq(testRounds.sessionId, sessionId),
+        eq(testDefinitions.key, "comfort360"),
+        eq(roundMetrics.metricKey, "maxSingleSwipeDeg"),
+        eq(testRounds.isPractice, false),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.value ?? null;
+}
+
+/** The session-level quality flags recorded so far. */
+export async function listSessionQualityFlags(
+  sessionId: string,
+  tx?: Executor,
+): Promise<readonly SessionQualityFlag[]> {
+  const db = executor(tx);
+  const rows = await db
+    .select({ flag: sessionQualityFlags.flag })
+    .from(sessionQualityFlags)
+    .where(eq(sessionQualityFlags.sessionId, sessionId));
+  return rows.map((row) => row.flag);
+}
+
+/**
+ * Session-wide frame quality, from the trials, for the confidence environment term.
+ *
+ * The clean-frame fraction is stored per trial (doc 10 §10.8); the session value is the mean
+ * over measured trials. Pointer-lock losses and resizes are session quality flags.
+ */
+export async function summariseSessionQuality(
+  sessionId: string,
+  tx?: Executor,
+): Promise<{ readonly cleanFrameFraction: number; readonly trials: number }> {
+  const db = executor(tx);
+  const rows = await db
+    .select({ cleanFrameFraction: testTrials.cleanFrameFraction })
+    .from(testTrials)
+    .innerJoin(testRounds, eq(testRounds.id, testTrials.roundId))
+    .where(and(eq(testRounds.sessionId, sessionId), eq(testTrials.isPractice, false)));
+  if (rows.length === 0) return { cleanFrameFraction: 1, trials: 0 };
+  const mean = rows.reduce((sum, row) => sum + row.cleanFrameFraction, 0) / rows.length;
+  return { cleanFrameFraction: mean, trials: rows.length };
+}
