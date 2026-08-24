@@ -37,6 +37,7 @@ async function main(): Promise<void> {
   const { runPlan } = await import("../tests/helpers/battery-runner");
   const { startCalibrationSession, submitCalibrationRound, abandonCalibrationSession } =
     await import("../src/services/calibration-session-service");
+  const { createProfile, listProfiles } = await import("../src/services/hardware-service");
   const { startValidation, submitValidation, validationOfferFor } =
     await import("../src/services/validation-service");
 
@@ -56,6 +57,19 @@ async function main(): Promise<void> {
       ).userId;
     const actor = asUser(userId);
 
+    // A saved hardware profile, so the history and profile screens have something real to
+    // show and every fixture session is attributed to the same setup (FR-095).
+    const existingProfiles = await listProfiles(actor);
+    const profile =
+      existingProfiles[0] ??
+      (await createProfile(actor, {
+        name: "Fixture desk",
+        dpi: DPI,
+        dpiSource: "known",
+        mousepadWidthMm: 450,
+        mouseModel: "Fixture mouse",
+      }));
+
     /** Runs one quick calibration to completion and returns what it decided. */
     async function calibrate(
       seed: bigint,
@@ -71,6 +85,7 @@ async function main(): Promise<void> {
         aspectRatio: 16 / 9,
         environment: { unadjustedMovementEffective: true },
         seed,
+        hardwareProfileId: profile.id,
       });
       const sessionId = step.sessionId;
       for (let guard = 0; guard < 6; guard += 1) {
@@ -170,6 +185,7 @@ async function main(): Promise<void> {
           email: E2E_EMAIL,
           password: E2E_PASSWORD,
           recommendations: out,
+          hardwareProfileId: profile.id,
           validationVerdict: outcome.verdict,
         },
         null,

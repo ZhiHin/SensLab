@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lte } from "drizzle-orm";
 import { authIdentities, authTokens, userProfiles, users, type UserRow } from "@/db/schema";
 import type { AuthTokenPurpose } from "@/core/types/vocabulary";
 import { newId } from "@/lib/crypto";
@@ -168,4 +168,103 @@ export async function invalidateTokensForUser(
         isNull(authTokens.consumedAt),
       ),
     );
+}
+
+/* ------------------------------------------------------------------ account management */
+
+export interface AccountRow {
+  readonly userId: string;
+  readonly email: string;
+  readonly emailVerifiedAt: Date | null;
+  readonly status: string;
+  readonly deletionScheduledAt: Date | null;
+  readonly createdAt: Date;
+  readonly displayName: string | null;
+  readonly locale: string;
+  readonly unitPreference: string;
+  readonly motionPreference: string;
+}
+
+/** The account and its profile, for the profile and settings screens. */
+export async function findAccount(actor: Actor, tx?: Executor): Promise<AccountRow | null> {
+  const { userId } = requireUser(actor);
+  const db = executor(tx);
+  const rows = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      emailVerifiedAt: users.emailVerifiedAt,
+      status: users.status,
+      deletionScheduledAt: users.deletionScheduledAt,
+      createdAt: users.createdAt,
+      displayName: userProfiles.displayName,
+      locale: userProfiles.locale,
+      unitPreference: userProfiles.unitPreference,
+      motionPreference: userProfiles.motionPreference,
+    })
+    .from(users)
+    .innerJoin(userProfiles, eq(userProfiles.userId, users.id))
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateDisplayName(
+  actor: Actor,
+  displayName: string | null,
+  tx?: Executor,
+): Promise<void> {
+  const { userId } = requireUser(actor);
+  const db = executor(tx);
+  await db
+    .update(userProfiles)
+    .set({ displayName, updatedAt: new Date() })
+    .where(eq(userProfiles.userId, userId));
+}
+
+/** The stored password digest for the signed-in user, for re-authentication. */
+export async function findPasswordHash(actor: Actor, tx?: Executor): Promise<string | null> {
+  const { userId } = requireUser(actor);
+  const db = executor(tx);
+  const rows = await db
+    .select({ secretHash: authIdentities.secretHash })
+    .from(authIdentities)
+    .where(and(eq(authIdentities.userId, userId), eq(authIdentities.provider, "password")))
+    .limit(1);
+  return rows[0]?.secretHash ?? null;
+}
+
+/**
+ * Schedules deletion (doc 23 §23.11).
+ *
+ * The account is marked `pending_deletion` and given a purge date; the row and its cascading
+ * data survive the window so the account is recoverable. Sign-in is refused while pending,
+ * which is what makes the window safe rather than a slow leak.
+ */
+export async function scheduleDeletion(actor: Actor, purgeAt: Date, tx?: Executor): Promise<void> {
+  const { userId } = requireUser(actor);
+  const db = executor(tx);
+  await db
+    .update(users)
+    .set({ status: "pending_deletion", deletionScheduledAt: purgeAt, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)));
+}
+
+export async function cancelDeletion(actor: Actor, tx?: Executor): Promise<void> {
+  const { userId } = requireUser(actor);
+  const db = executor(tx);
+  await db
+    .update(users)
+    .set({ status: "active", deletionScheduledAt: null, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), eq(users.status, "pending_deletion")));
+}
+
+/** Hard purge of accounts whose window has elapsed. Cascades to every owned row. */
+export async function purgeScheduledDeletions(now: Date, tx?: Executor): Promise<number> {
+  const db = executor(tx);
+  const rows = await db
+    .delete(users)
+    .where(and(eq(users.status, "pending_deletion"), lte(users.deletionScheduledAt, now)))
+    .returning({ id: users.id });
+  return rows.length;
 }

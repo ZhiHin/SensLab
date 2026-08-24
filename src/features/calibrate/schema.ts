@@ -23,6 +23,7 @@ export const startCalibrationSchema = z.object({
   currentCmPer360: finite.gt(0).lt(500).nullable(),
   padWidthCm: finite.gt(0).lt(300).nullable(),
   gameId: z.string().min(1).max(64).nullable(),
+  hardwareProfileId: z.uuid().nullable().default(null),
   aspectRatio: finite.positive(),
   environment: z.record(z.string(), z.unknown()).default({}),
 });

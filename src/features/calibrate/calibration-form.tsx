@@ -11,8 +11,10 @@ import type { DpiSource, SessionMode } from "@/core/types/vocabulary";
  * and the result page says so. The current sensitivity centres the search; the pad width
  * bounds it. Both optional, both explained, neither blocking.
  *
- * The polished hardware-setup screen with saved profiles is Phase 9/10. This is the honest
- * minimum that lets a session start with what the engine needs.
+ * A signed-in user with saved hardware profiles picks one and the fields prefill from it
+ * (FR-094, FR-095); the session records which profile it ran at, and the values are still
+ * submitted as a snapshot, so editing the profile later cannot rewrite this session
+ * (`SENS-BR-035`). A guest, or a user with no profiles, types the same fields by hand.
  */
 
 export interface CalibrationFormValues {
@@ -22,11 +24,23 @@ export interface CalibrationFormValues {
   readonly currentCmPer360: number | null;
   readonly padWidthCm: number | null;
   readonly gameId: string | null;
+  readonly hardwareProfileId: string | null;
   readonly aspectRatio: number;
+}
+
+/** What the form needs from a saved profile: the fields it prefills. */
+export interface HardwareProfileOption {
+  readonly id: string;
+  readonly name: string;
+  readonly dpi: number;
+  readonly dpiSource: DpiSource;
+  readonly mousepadWidthMm: number | null;
+  readonly isDefault: boolean;
 }
 
 export interface CalibrationFormProps {
   readonly games: readonly { readonly gameId: string; readonly displayName: string }[];
+  readonly profiles: readonly HardwareProfileOption[];
   readonly busy: boolean;
   readonly error: string | null;
   readonly onSubmit: (values: CalibrationFormValues) => void;
@@ -49,13 +63,31 @@ const MODE_COPY: Readonly<
 const input =
   "w-full border border-hairline-strong bg-surface-2 px-3 py-2 type-data-s text-text-1 disabled:opacity-40";
 
-export function CalibrationForm({ games, busy, error, onSubmit }: CalibrationFormProps) {
+export function CalibrationForm({ games, profiles, busy, error, onSubmit }: CalibrationFormProps) {
+  const preselected = profiles.find((profile) => profile.isDefault) ?? profiles[0] ?? null;
   const [mode, setMode] = useState<"quick" | "standard" | "advanced">("standard");
-  const [dpi, setDpi] = useState("800");
-  const [dpiKnown, setDpiKnown] = useState(true);
+  const [profileId, setProfileId] = useState(preselected?.id ?? "");
+  const [dpi, setDpi] = useState(String(preselected?.dpi ?? 800));
+  const [dpiKnown, setDpiKnown] = useState(
+    preselected === null || preselected.dpiSource === "known",
+  );
   const [currentCm, setCurrentCm] = useState("");
-  const [padWidth, setPadWidth] = useState("");
+  const [padWidth, setPadWidth] = useState(
+    preselected?.mousepadWidthMm === null || preselected?.mousepadWidthMm === undefined
+      ? ""
+      : String(preselected.mousepadWidthMm / 10),
+  );
   const [gameId, setGameId] = useState("");
+
+  /** Prefills from the chosen profile; every field stays editable afterwards. */
+  function chooseProfile(id: string) {
+    setProfileId(id);
+    const profile = profiles.find((candidate) => candidate.id === id);
+    if (profile === undefined) return;
+    setDpi(String(profile.dpi));
+    setDpiKnown(profile.dpiSource === "known");
+    if (profile.mousepadWidthMm !== null) setPadWidth(String(profile.mousepadWidthMm / 10));
+  }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,6 +101,7 @@ export function CalibrationForm({ games, busy, error, onSubmit }: CalibrationFor
       currentCmPer360: cm !== null && Number.isFinite(cm) && cm > 0 ? cm : null,
       padWidthCm: pad !== null && Number.isFinite(pad) && pad > 0 ? pad : null,
       gameId: gameId === "" ? null : gameId,
+      hardwareProfileId: profileId === "" ? null : profileId,
       aspectRatio: window.innerWidth / Math.max(1, window.innerHeight),
     });
   }
@@ -101,6 +134,30 @@ export function CalibrationForm({ games, busy, error, onSubmit }: CalibrationFor
 
       <fieldset className="grid gap-6 sm:grid-cols-2">
         <legend className="type-label mb-2">Your mouse</legend>
+
+        {profiles.length > 0 && (
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="type-label">Hardware profile</span>
+            <select
+              value={profileId}
+              onChange={(event) => chooseProfile(event.target.value)}
+              className="border border-hairline-strong bg-surface-2 px-3 py-2 text-sm text-text-1"
+              data-testid="input-hardware-profile"
+            >
+              <option value="">Not one of my saved profiles</option>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name} · {profile.dpi} DPI{profile.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-text-3">
+              Fills in what it knows and records which setup this session ran on, so history can
+              tell two setups apart. Editing the profile later never changes what a past session
+              measured.
+            </span>
+          </label>
+        )}
 
         <label className="flex flex-col gap-1">
           <span className="type-label">Mouse DPI</span>

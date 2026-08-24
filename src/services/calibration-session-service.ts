@@ -8,7 +8,13 @@ import {
 } from "@/core/sensitivity/canonical";
 import { countsPer360 } from "@/core/types/brand";
 import type { SessionMode, SessionQualityFlag } from "@/core/types/vocabulary";
-import { algorithmRepo, calibrationRepo, gameRepo, sessionRepo } from "@/repositories";
+import {
+  algorithmRepo,
+  calibrationRepo,
+  gameRepo,
+  hardwareRepo,
+  sessionRepo,
+} from "@/repositories";
 import type { Actor } from "@/repositories/actor";
 import { withTransaction } from "@/repositories/transaction";
 import { ValidationError, notFound } from "@/lib/errors";
@@ -58,6 +64,12 @@ export interface StartCalibrationInput {
   readonly currentCmPer360: number | null;
   readonly padWidthCm: number | null;
   readonly gameId: string | null;
+  /**
+   * The hardware profile this session runs at (FR-095, `SENS-BR-018`). The snapshot is still
+   * written from the values passed in, so editing the profile afterwards cannot rewrite what
+   * this session measured (`SENS-BR-035`) — the id is what lets history group and compare.
+   */
+  readonly hardwareProfileId?: string | null;
   readonly aspectRatio: number;
   readonly environment: Readonly<Record<string, unknown>>;
   /**
@@ -117,6 +129,13 @@ export async function startCalibrationSession(
   const gameVersion =
     input.gameId === null ? null : await gameRepo.findGameVersionBySlug(input.gameId);
 
+  // A profile the actor does not own is not attached: the lookup composes ownership, so an
+  // id from elsewhere resolves to null rather than borrowing someone else's hardware.
+  const profileId =
+    input.hardwareProfileId === undefined || input.hardwareProfileId === null
+      ? null
+      : ((await hardwareRepo.getHardwareProfile(actor, input.hardwareProfileId))?.id ?? null);
+
   const { sessionId, seed } = await withTransaction(async (tx) => {
     const versions = await algorithmRepo.resolveAlgorithmVersionIds(
       {
@@ -142,7 +161,7 @@ export async function startCalibrationSession(
     const session = await sessionRepo.createTestSession(
       actor,
       {
-        hardwareProfileId: null,
+        hardwareProfileId: profileId,
         hardwareSnapshot: { ...hardwareSnapshot },
         primaryGameVersionId: gameVersion?.gameVersionId ?? null,
         mode: input.mode,

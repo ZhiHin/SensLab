@@ -15,7 +15,11 @@ import {
   submitCalibrationRoundAction,
 } from "./actions";
 import { AnalysisStage } from "./analysis-stage";
-import { CalibrationForm, type CalibrationFormValues } from "./calibration-form";
+import {
+  CalibrationForm,
+  type CalibrationFormValues,
+  type HardwareProfileOption,
+} from "./calibration-form";
 
 /**
  * The calibration session surface (doc 04 journey J-01 stages 5–9).
@@ -45,9 +49,11 @@ type Phase =
 
 export interface CalibrationSurfaceProps {
   readonly games: readonly { readonly gameId: string; readonly displayName: string }[];
+  /** Saved profiles for a signed-in user; empty for a guest. */
+  readonly profiles: readonly HardwareProfileOption[];
 }
 
-export function CalibrationSurface({ games }: CalibrationSurfaceProps) {
+export function CalibrationSurface({ games, profiles }: CalibrationSurfaceProps) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>({ kind: "setup" });
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +140,7 @@ export function CalibrationSurface({ games }: CalibrationSurfaceProps) {
       currentCmPer360: form.currentCmPer360,
       padWidthCm: form.padWidthCm,
       gameId: form.gameId,
+      hardwareProfileId: form.hardwareProfileId,
       aspectRatio: form.aspectRatio,
       environment: {
         devicePixelRatio: window.devicePixelRatio,
@@ -196,6 +203,7 @@ export function CalibrationSurface({ games }: CalibrationSurfaceProps) {
       {(phase.kind === "setup" || phase.kind === "starting") && (
         <CalibrationForm
           games={games}
+          profiles={profiles}
           busy={phase.kind === "starting"}
           error={error}
           onSubmit={(form) => void begin(form)}

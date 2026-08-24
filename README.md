@@ -13,7 +13,7 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 8 — Validation and Fine-Tuning.** The project follows a phased plan defined in
+**Phase 9 — Accounts, History and Hardware Profiles.** The project follows a phased plan defined in
 [`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
 authentication, the pure-domain maths, CI — the engine that runs an aim session, all thirteen
 aim tests doc 09 specifies with every metric doc 10 defines, the statistical engine that turns
@@ -28,6 +28,13 @@ refinement inside the uncertainty around the recommendation.
 **The calibration is deterministic statistics, not AI** (`SENS-BR-002`). It is a noisy
 one-dimensional derivative-free search with a drift model, and it **refuses to invent a peak**:
 a flat or indistinguishable response returns a range and says why (`SENS-BR-017`).
+
+**Results accumulate into a history that refuses to flatter you.** Sessions are attributed to
+a hardware profile, and a comparison between two of them calls a change meaningful only when
+the two high-performance ranges do not overlap — a stricter rule than a formal test, because a
+fabricated progress narrative is the most tempting dishonesty a product like this has
+available. A comparison whose sessions used different hardware, a different mode or a
+different algorithm version is flagged and says specifically what differed (`SENS-BR-019`).
 
 **SensLab is willing to report that its answer lost.** Validation is a confirmatory two-arm
 test after an exploratory search, so the winner's curse does not go unchecked. The headline
@@ -70,8 +77,8 @@ now built so that a constant **cannot** be shipped without closing one (`SENS-BR
 | 5     | Verified game adapters                         | Complete — [report](docs/implementation/phase-5-completion.md)     |
 | 6     | Advanced aim tests                             | Complete — [report](docs/implementation/phase-6-completion.md)     |
 | 7     | Results and Aim DNA                            | Complete — [report](docs/implementation/phase-7-completion.md)     |
-| **8** | **Validation and fine-tuning**                 | **Complete** — [report](docs/implementation/phase-8-completion.md) |
-| 9     | Accounts, history, hardware profiles           | Not started                                                        |
+| 8     | Validation and fine-tuning                     | Complete — [report](docs/implementation/phase-8-completion.md)     |
+| **9** | **Accounts, history, hardware profiles**       | **Complete** — [report](docs/implementation/phase-9-completion.md) |
 | 10    | UI/UX polish and the landing experience        | Not started                                                        |
 | 11    | Hardening and release readiness                | Not started                                                        |
 
@@ -299,7 +306,7 @@ no surface can opt out. `/games` publishes the whole register.
 | Unit         | Vitest                   | `core/`, `game-adapters/` and `test-engine/`. Gated at 90% branch coverage |
 | Architecture | Vitest                   | Module boundaries, determinism, secret hygiene                             |
 | Integration  | Vitest + real PostgreSQL | Ownership, constraints, triggers, ingest idempotency, auth                 |
-| E2E          | Playwright               | Shell, auth, headers, health, the harness, results, validation, fine-tune  |
+| E2E          | Playwright               | Shell, auth, headers, health, the harness, results, validation, accounts   |
 
 Playwright serves the production build on port 3000 by default. If another app holds that port,
 set `PLAYWRIGHT_PROD_PORT` (and `PLAYWRIGHT_DEV_PORT` for the `lab` project) — the config will
@@ -309,7 +316,8 @@ The results specs need real recommendations to look at. Playwright's global setu
 `scripts/e2e-fixtures.ts` against the database: it creates a fixture account and drives real
 calibration sessions with a synthetic player until it has one result of each kind it needs —
 a peak worth validating, a flat session, and one that has been through the validation test —
-then writes the ids to `test-results/e2e-fixtures.json`. The seed is **searched, not pinned**:
+then writes the ids to `test-results/e2e-fixtures.json`. The fixture account also gets a saved
+hardware profile, so the history and profile screens have something real to render. The seed is **searched, not pinned**:
 a verdict is a property of the data, so a change to the player or a parameter set would break
 a pinned seed with a mystifying error. The database must be up for `npm run test:e2e`.
 
