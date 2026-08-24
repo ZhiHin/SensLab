@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { cmPer360FromCounts } from "@/core/sensitivity/canonical";
 import type { CalibrationRoundResult, Candidate } from "@/core/calibration/contracts";
 import type { ObservedTrial } from "@/core/scoring/standardise";
-import type { TestKey } from "@/core/types/vocabulary";
+import type { CandidateSource, TestKey } from "@/core/types/vocabulary";
 import {
   calibrationCandidates,
   calibrationRounds,
@@ -40,6 +40,7 @@ export interface CandidateRow {
   readonly candidateIndex: number;
   readonly countsPer360: number;
   readonly blindLabel: string;
+  readonly source: CandidateSource;
 }
 
 /** Writes one round's candidates. Idempotent on `(session, round, candidate)`. */
@@ -93,6 +94,7 @@ export async function listCandidates(
       candidateIndex: calibrationCandidates.candidateIndex,
       countsPer360: calibrationCandidates.countsPer360,
       blindLabel: calibrationCandidates.blindLabel,
+      source: calibrationCandidates.source,
     })
     .from(calibrationCandidates)
     .where(eq(calibrationCandidates.sessionId, sessionId))
@@ -178,9 +180,19 @@ export async function listRoundResults(
  * client computed. A client that could submit its own objective values could submit a curve
  * with a peak wherever it liked (`SENS-BR-034`).
  */
+export interface LoadObservedTrialsOptions {
+  /**
+   * What `blockIndex` carries. The calibration's drift model wants the finest time axis there
+   * is, so the default is the presentation order; the paired analyses (doc 17) want the
+   * planned block, because that is what the pairing is defined on.
+   */
+  readonly blockIndexFrom?: "presentation" | "planned";
+}
+
 export async function loadObservedTrials(
   sessionId: string,
   tx?: Executor,
+  options: LoadObservedTrialsOptions = {},
 ): Promise<readonly ObservedTrial[]> {
   const db = executor(tx);
 
@@ -189,7 +201,8 @@ export async function loadObservedTrials(
       testKey: testDefinitions.key,
       candidateIndex: calibrationCandidates.candidateIndex,
       roundIndex: calibrationCandidates.roundIndex,
-      blockIndex: testRounds.presentationOrder,
+      blockIndex:
+        options.blockIndexFrom === "planned" ? testRounds.blockIndex : testRounds.presentationOrder,
       trialId: testTrials.id,
       trialIndex: testTrials.trialIndex,
       validity: testTrials.validity,

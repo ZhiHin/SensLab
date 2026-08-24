@@ -10,3 +10,4 @@ export * as sessionRepo from "./session-repo";
 export * as rateLimitRepo from "./rate-limit-repo";
 export * as calibrationRepo from "./calibration-repo";
 export * as recommendationRepo from "./recommendation-repo";
+export * as validationRepo from "./validation-repo";

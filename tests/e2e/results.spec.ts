@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { AUTH_STATE } from "./auth-state";
 
 /**
  * Phase 7 end-to-end: the results experience in a browser.
@@ -18,19 +19,13 @@ interface Fixtures {
 
 const fixtures = JSON.parse(readFileSync("test-results/e2e-fixtures.json", "utf8")) as Fixtures;
 
-async function signIn(page: Page): Promise<void> {
-  await page.goto("/auth/sign-in");
-  await page.getByLabel("Email").fill(fixtures.email);
-  await page.getByLabel("Password", { exact: true }).fill(fixtures.password);
-  await page.getByRole("button", { name: /sign in/i }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/auth/sign-in"));
-}
+/** Signed in once by the setup project; the ownership spec opts out below. */
+test.use({ storageState: AUTH_STATE });
 
 test.describe("a peak_found result", () => {
   test("leads with the number, both ranges, the confidence index and the profile", async ({
     page,
   }) => {
-    await signIn(page);
     await page.goto(`/results/${fixtures.recommendations.peak_found}`);
 
     await expect(page.getByTestId("hero-peak")).toBeVisible();
@@ -38,7 +33,7 @@ test.describe("a peak_found result", () => {
     await expect(page.getByText("High-performance range", { exact: true })).toBeVisible();
     await expect(page.getByText("Comfort range", { exact: true })).toBeVisible();
     await expect(page.getByText("Confidence index", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("relative-statement")).toContainText(/You were at 30/);
+    await expect(page.getByTestId("relative-statement")).toContainText(/You were at \d+/);
 
     // The evidence chart and the profile shape are both rendered as accessible SVG.
     await expect(page.getByTestId("response-curve")).toBeVisible();
@@ -55,7 +50,6 @@ test.describe("a peak_found result", () => {
   });
 
   test("explains the confidence index as a diagnostic, never a probability", async ({ page }) => {
-    await signIn(page);
     await page.goto(`/results/${fixtures.recommendations.peak_found}`);
 
     await page.getByTestId("confidence-breakdown").locator("summary").click();
@@ -73,7 +67,6 @@ test.describe("an indistinguishable result", () => {
   test("leads with the comfort range and no point value, and does not look like an error", async ({
     page,
   }) => {
-    await signIn(page);
     await page.goto(`/results/${fixtures.recommendations.indistinguishable}`);
 
     await expect(page.getByTestId("hero-indistinguishable")).toBeVisible();
@@ -103,7 +96,6 @@ test.describe("game settings from a result", () => {
   test("switches games without re-running anything and never shows an unverified number", async ({
     page,
   }) => {
-    await signIn(page);
     await page.goto(`/results/${fixtures.recommendations.peak_found}`);
     await page.getByTestId("see-settings").click();
     await expect(page).toHaveURL(/\/settings$/);
@@ -122,7 +114,6 @@ test.describe("game settings from a result", () => {
 
   test("copies exactly the value shown", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await signIn(page);
     await page.goto(`/results/${fixtures.recommendations.peak_found}/settings`);
 
     const shown = await page.getByTestId("settings-target-cm").innerText();
@@ -133,6 +124,8 @@ test.describe("game settings from a result", () => {
 });
 
 test.describe("ownership", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test("is a 404 for anyone but the owner", async ({ page }) => {
     const response = await page.goto(`/results/${fixtures.recommendations.peak_found}`);
     expect(response?.status()).toBe(404);
@@ -140,6 +133,8 @@ test.describe("ownership", () => {
 });
 
 test.describe("the calibration flow", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test("starts from the front page and briefs the first round before capturing anything", async ({
     page,
   }) => {

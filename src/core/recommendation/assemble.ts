@@ -131,6 +131,45 @@ function trialScoreRcv(calibration: CalibrationResult): number | null {
   return Number.isFinite(sd / denominator) ? sd / denominator : null;
 }
 
+/**
+ * The two ranges as shown (doc 16 §16.3): the high-performance range is the credible interval
+ * and the comfort range is the plateau, **both clipped by the physical constraint**, and the
+ * comfort range always contains the high-performance range. The engine already clips the
+ * plateau; the interval is the statistical evidence and stays unclipped on the curve, so the
+ * clip is applied here, where the ranges become a claim about what the player can use.
+ */
+function clippedRanges(
+  calibration: CalibrationResult,
+  dpi: number,
+): Pick<Recommendation["ranges"], "highPerformance" | "comfort"> {
+  const ceiling = calibration.constraint.maxCmPer360;
+  let highPerformance: Recommendation["ranges"]["highPerformance"] =
+    calibration.verdict === "peak_found" && calibration.credibleInterval !== null
+      ? {
+          lowCm360: cmPer360FromCounts(2 ** calibration.credibleInterval.low, dpi),
+          highCm360: cmPer360FromCounts(2 ** calibration.credibleInterval.high, dpi),
+          level: calibration.credibleInterval.level,
+        }
+      : null;
+  if (highPerformance !== null && ceiling !== null && ceiling > highPerformance.lowCm360) {
+    highPerformance = {
+      ...highPerformance,
+      highCm360: Math.min(highPerformance.highCm360, ceiling),
+    };
+  }
+  const comfort = {
+    lowCm360: Math.min(
+      calibration.comfortRange.lowCm360,
+      highPerformance?.lowCm360 ?? Number.POSITIVE_INFINITY,
+    ),
+    highCm360: Math.max(
+      calibration.comfortRange.highCm360,
+      highPerformance?.highCm360 ?? Number.NEGATIVE_INFINITY,
+    ),
+  };
+  return { highPerformance, comfort };
+}
+
 export function assembleRecommendation(inputs: AssembleInputs): Recommendation {
   const { calibration, params, dpi } = inputs;
   const counts = calibration.countsPer360;
@@ -186,6 +225,8 @@ export function assembleRecommendation(inputs: AssembleInputs): Recommendation {
           inputs.versions.confidence,
         );
 
+  const ranges = clippedRanges(calibration, dpi);
+
   return {
     verdict: calibration.verdict,
     canonical: {
@@ -194,18 +235,8 @@ export function assembleRecommendation(inputs: AssembleInputs): Recommendation {
       degreesPerCm: cm === null ? null : 360 / cm,
     },
     ranges: {
-      highPerformance:
-        calibration.verdict === "peak_found" && calibration.credibleInterval !== null
-          ? {
-              lowCm360: cmPer360FromCounts(2 ** calibration.credibleInterval.low, dpi),
-              highCm360: cmPer360FromCounts(2 ** calibration.credibleInterval.high, dpi),
-              level: calibration.credibleInterval.level,
-            }
-          : null,
-      comfort: {
-        lowCm360: calibration.comfortRange.lowCm360,
-        highCm360: calibration.comfortRange.highCm360,
-      },
+      highPerformance: ranges.highPerformance,
+      comfort: ranges.comfort,
       constraint:
         calibration.constraint.maxCmPer360 === null
           ? null

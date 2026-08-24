@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ResultsView } from "@/features/results/results-view";
 import { getRecommendation } from "@/services/recommendation-service";
+import { getValidation, validationOfferFor } from "@/services/validation-service";
 import { getActor } from "@/services/session-context";
 
 /**
@@ -26,5 +27,27 @@ export default async function ResultsPage({ params }: PageProps) {
   const actor = await getActor();
   const view = await getRecommendation(actor, recommendationId);
   if (view === null) notFound();
-  return <ResultsView view={view} />;
+  const [offer, validation] = await Promise.all([
+    validationOfferFor(actor, recommendationId),
+    getValidation(actor, recommendationId),
+  ]);
+  if (offer === null) notFound();
+
+  return (
+    <ResultsView
+      view={view}
+      validation={{
+        offer,
+        outcome:
+          validation === null
+            ? null
+            : {
+                verdict: validation.verdict,
+                confidenceBefore: validation.confidenceBefore,
+                confidenceAfter: validation.confidenceAfter,
+                accepted: validation.accepted,
+              },
+      }}
+    />
+  );
 }

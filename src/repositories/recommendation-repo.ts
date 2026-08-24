@@ -1,8 +1,10 @@
 import { and, desc, eq } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Recommendation } from "@/core/recommendation";
 import type { DimensionKey, ScopeKey } from "@/core/types/vocabulary";
 import type { ConversionSuccess } from "@/game-adapters";
 import {
+  algorithmVersions,
   guestSessions,
   recommendationDimensionScores,
   recommendationGameSettings,
@@ -58,6 +60,10 @@ export interface RecommendationRow {
   readonly parentRecommendationId: string | null;
   readonly supersededById: string | null;
   readonly createdAt: Date;
+  /** The parameter-set labels the row was generated under (`SENS-BR-020`). */
+  readonly scoringVersion: string;
+  readonly calibrationVersion: string;
+  readonly confidenceVersion: string;
   /** Owner context the page needs: a guest result expires (doc 04 §4.4.12). */
   readonly guestExpiresAt: Date | null;
   readonly sessionMode: string;
@@ -117,7 +123,10 @@ export async function saveRecommendation(
     aimProfileKey: recommendation.profile.classification.key,
     aimProfileExplanation: recommendation.profile.explanation,
     responseCurve: recommendation.evidence.responseCurve,
-    acceptedCounts360: recommendation.canonical.recommendedCountsPer360,
+    // Null until the player decides. The column records what they were *told to use after
+    // validation* (doc 20 §20.8); writing the recommendation into it at creation would make
+    // an untested estimate indistinguishable from an accepted one.
+    acceptedCounts360: null,
     scoringVersionId: input.versionIds.scoring,
     calibrationVersionId: input.versionIds.calibration,
     confidenceVersionId: input.versionIds.confidence,
@@ -182,6 +191,10 @@ export async function saveGameSetting(
   }
 }
 
+const scoringVersion = alias(algorithmVersions, "scoring_version");
+const calibrationVersion = alias(algorithmVersions, "calibration_version");
+const confidenceVersion = alias(algorithmVersions, "confidence_version");
+
 const ownedSelection = {
   id: recommendations.id,
   sessionId: recommendations.sessionId,
@@ -205,6 +218,9 @@ const ownedSelection = {
   parentRecommendationId: recommendations.parentRecommendationId,
   supersededById: recommendations.supersededById,
   createdAt: recommendations.createdAt,
+  scoringVersion: scoringVersion.versionLabel,
+  calibrationVersion: calibrationVersion.versionLabel,
+  confidenceVersion: confidenceVersion.versionLabel,
   guestExpiresAt: guestSessions.expiresAt,
   sessionMode: testSessions.mode,
   hardwareSnapshot: testSessions.hardwareSnapshot,
@@ -235,6 +251,9 @@ export async function findRecommendation(
     .select(ownedSelection)
     .from(recommendations)
     .innerJoin(testSessions, eq(testSessions.id, recommendations.sessionId))
+    .innerJoin(scoringVersion, eq(scoringVersion.id, recommendations.scoringVersionId))
+    .innerJoin(calibrationVersion, eq(calibrationVersion.id, recommendations.calibrationVersionId))
+    .innerJoin(confidenceVersion, eq(confidenceVersion.id, recommendations.confidenceVersionId))
     .leftJoin(guestSessions, eq(guestSessions.id, testSessions.guestSessionId))
     .where(
       and(
@@ -261,6 +280,9 @@ export async function findRecommendationForSession(
     .select(ownedSelection)
     .from(recommendations)
     .innerJoin(testSessions, eq(testSessions.id, recommendations.sessionId))
+    .innerJoin(scoringVersion, eq(scoringVersion.id, recommendations.scoringVersionId))
+    .innerJoin(calibrationVersion, eq(calibrationVersion.id, recommendations.calibrationVersionId))
+    .innerJoin(confidenceVersion, eq(confidenceVersion.id, recommendations.confidenceVersionId))
     .leftJoin(guestSessions, eq(guestSessions.id, testSessions.guestSessionId))
     .where(
       and(
@@ -292,4 +314,38 @@ export async function listDimensionScores(
     })
     .from(recommendationDimensionScores)
     .where(eq(recommendationDimensionScores.recommendationId, recommendationId));
+}
+
+/* ------------------------------------------------------------------ after validation */
+
+export interface RecommendationUpdate {
+  /** The index after the validation multiplier (doc 15 §15.8). */
+  readonly confidenceIndex?: number;
+  /** What the player is told to use — the original after a loss, the recommendation on accept. */
+  readonly acceptedCounts360?: number | null;
+}
+
+/**
+ * Applies a validation outcome to the recommendation row. Nothing else on the row is ever
+ * updated: the canonical value, ranges, curve and profile are immutable once written, and
+ * a refinement is a new row (doc 16 §16.9).
+ */
+export async function updateRecommendation(
+  actor: Actor,
+  recommendationId: string,
+  update: RecommendationUpdate,
+  tx?: Executor,
+): Promise<void> {
+  const owned = await findRecommendation(actor, recommendationId, tx);
+  if (owned === null) throw notFound("recommendation");
+  const db = executor(tx);
+  await db
+    .update(recommendations)
+    .set({
+      ...(update.confidenceIndex === undefined ? {} : { confidenceIndex: update.confidenceIndex }),
+      ...(update.acceptedCounts360 === undefined
+        ? {}
+        : { acceptedCounts360: update.acceptedCounts360 }),
+    })
+    .where(eq(recommendations.id, recommendationId));
 }

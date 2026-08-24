@@ -4,6 +4,7 @@ import { dimensionLabel, explainStrengths, strengthsAndAreas } from "@/core/reco
 import { AIM_PROFILE_RULES_V1 } from "@/core/params";
 import type { DimensionKey } from "@/core/types/vocabulary";
 import type { RecommendationView } from "@/services/recommendation-service";
+import type { ValidationOffer } from "@/core/validation";
 import { AimDna } from "./aim-dna";
 import { ConfidenceBreakdown } from "./confidence-breakdown";
 import { CopyButton } from "./copy-button";
@@ -34,7 +35,32 @@ function relativeStatement(view: RecommendationView): string | null {
   return `You were at ${fmt(current)}. Your measured peak is about ${pct}% ${ratio > 1 ? "slower" : "faster"} than that.`;
 }
 
-export function ResultsView({ view }: { view: RecommendationView }) {
+export interface ResultsViewProps {
+  readonly view: RecommendationView;
+  /**
+   * Whether a validation is offered, and why not when it is not (doc 17 §17.2). Resolved on
+   * the server so the page can state the reason rather than hiding the control.
+   */
+  readonly validation: {
+    readonly offer: ValidationOffer;
+    readonly outcome: ValidationOutcomeSummary | null;
+  };
+}
+
+export interface ValidationOutcomeSummary {
+  readonly verdict: "improved" | "no_measurable_difference" | "worse";
+  readonly confidenceBefore: number;
+  readonly confidenceAfter: number;
+  readonly accepted: "recommended" | "original" | null;
+}
+
+const VALIDATION_HEADLINE: Readonly<Record<ValidationOutcomeSummary["verdict"], string>> = {
+  improved: "Validated — the recommendation performed better",
+  no_measurable_difference: "Validated — no measurable difference between the two",
+  worse: "Validated — your original performed better",
+};
+
+export function ResultsView({ view, validation }: ResultsViewProps) {
   const profileParams = AIM_PROFILE_RULES_V1.params;
   const dimensions = view.profile.dimensions.map((d) => ({
     dimension: d.dimension as DimensionKey,
@@ -288,9 +314,62 @@ export function ResultsView({ view }: { view: RecommendationView }) {
         </Panel>
       </div>
 
+      {/* ------------------------------------------------------------- validation */}
+      {validation.outcome !== null && (
+        <Callout
+          tone={validation.outcome.verdict === "worse" ? "caution" : "neutral"}
+          title={VALIDATION_HEADLINE[validation.outcome.verdict]}
+        >
+          <span data-testid="validation-summary">
+            Confidence moved {validation.outcome.confidenceBefore} →{" "}
+            {validation.outcome.confidenceAfter}.
+            {validation.outcome.accepted === "original"
+              ? " Your original sensitivity is the standing recommendation."
+              : validation.outcome.accepted === "recommended"
+                ? " You accepted the measured value."
+                : ""}
+          </span>{" "}
+          <Link
+            href={`/results/${view.id}/validation`}
+            className="underline"
+            data-testid="see-validation"
+          >
+            See the comparison
+          </Link>
+        </Callout>
+      )}
+
+      {validation.outcome === null && validation.offer.reason === "within_mde" && (
+        <Callout tone="neutral" title="Nothing to validate — you were already there">
+          <span data-testid="within-mde-note">
+            Your measured peak is inside the range this session could not separate from where you
+            already play. A head-to-head comparison would be a test the calibration has already
+            declined to call, so it is not offered.
+          </span>
+        </Callout>
+      )}
+
       {/* ---------------------------------------------------------------- actions */}
       {view.verdict !== "insufficient_data" && (
         <div className="flex flex-wrap gap-3">
+          {validation.offer.offered && (
+            <Link
+              href={`/results/${view.id}/validate`}
+              className="border border-hairline px-6 py-3 type-label"
+              data-testid="start-validation"
+            >
+              Validate it against your current sens
+            </Link>
+          )}
+          {validation.outcome !== null && view.verdict === "peak_found" && (
+            <Link
+              href={`/fine-tune/${view.id}`}
+              className="border border-hairline px-6 py-3 type-label"
+              data-testid="start-fine-tune"
+            >
+              Fine-tune
+            </Link>
+          )}
           <Link
             href={`/results/${view.id}/settings`}
             className="border border-text-1 px-6 py-3 type-label"

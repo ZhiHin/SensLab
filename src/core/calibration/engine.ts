@@ -261,14 +261,27 @@ export function runCalibration(input: CalibrationInput): CalibrationResult {
 
   const anchor = anchorRetest(input, latest.estimates);
   const distinguishable = anyPairDistinguishable(latest.bootstrap);
+  const vertexX = last.fit?.concave === true ? last.fit.vertexX : null;
+
+  // A peak is claimed only where it was measured. The same tolerance that turns a narrow into
+  // a shift (doc 13 §13.8) applies to the verdict: a vertex beyond the measured span plus the
+  // tolerance is the quadratic extrapolating, and a session that ran out of rounds while
+  // shifting towards it has located a slope, not a peak.
+  const span = usable.map((estimate) => estimate.x as number);
+  const tolerance = input.params.narrowing.vertexClipFactor * (last.bracket.halfWidth as number);
+  const spanLow = Math.min(...span) - tolerance;
+  const spanHigh = Math.max(...span) + tolerance;
+  const peakBeyondMeasured =
+    vertexX === null ? null : vertexX < spanLow ? "below" : vertexX > spanHigh ? "above" : null;
+
   const peak =
     distinguishable &&
-    last.fit?.concave === true &&
-    last.fit.vertexX !== null &&
+    vertexX !== null &&
+    peakBeyondMeasured === null &&
     latest.bootstrap.vertexInterval !== null;
 
   const verdict: CalibrationVerdict = peak ? "peak_found" : "indistinguishable";
-  const xStar = peak ? (last.fit?.vertexX ?? null) : null;
+  const xStar = peak ? vertexX : null;
 
   return {
     verdict,
@@ -288,6 +301,7 @@ export function runCalibration(input: CalibrationInput): CalibrationResult {
       measuredRange(usable),
       input.params.statistics.significanceLevel,
     ),
+    peakBeyondMeasured,
     stopReason: last.decision,
     constraint: input.spec.constraint,
     seed: input.spec.seed,
@@ -439,6 +453,7 @@ function insufficient(
     anchorRetest: null,
     minimumDetectableEffect: last?.minimumDetectableEffect ?? Number.POSITIVE_INFINITY,
     fitBand: [],
+    peakBeyondMeasured: null,
     stopReason: last?.decision ?? "stop_budget",
     constraint: input.spec.constraint,
     seed: input.spec.seed,

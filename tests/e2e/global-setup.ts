@@ -35,8 +35,8 @@ export default async function globalSetup(): Promise<void> {
     await sql.end({ timeout: 5 });
   }
 
-  // Results fixtures: a real session loop with pinned seeds, through the same script a
-  // developer can run by hand. Shimming `server-only` the way the integration suite does.
+  // Results fixtures: real session loops, through the same script a developer can run by
+  // hand. Shimming `server-only` the way the integration suite does.
   execFileSync("npx", ["tsx", "--tsconfig", "tsconfig.scripts.json", "scripts/e2e-fixtures.ts"], {
     stdio: "inherit",
     shell: process.platform === "win32",

@@ -18,7 +18,7 @@ import {
   type RoundInput,
   type SearchBracket,
 } from "@/core/calibration";
-import { CALIBRATION_MODEL_V1, SCORING_MODEL_V2 } from "@/core/params";
+import { CALIBRATION_MODEL_V2, SCORING_MODEL_V2 } from "@/core/params";
 import { deriveRng } from "@/core/random";
 import { computeObjective } from "@/core/scoring";
 import { logSensitivity } from "@/core/types/brand";
@@ -51,7 +51,7 @@ import { scoredTestsForMode } from "@/test-engine/tests";
  * a number with no indication of how much to trust it.
  */
 
-const CALIBRATION_PARAMS = CALIBRATION_MODEL_V1.params;
+const CALIBRATION_PARAMS = CALIBRATION_MODEL_V2.params;
 const SCORING_PARAMS = SCORING_MODEL_V2.params;
 
 export interface CalibrationContext {
@@ -63,6 +63,12 @@ export interface CalibrationContext {
   readonly anchor: BracketAnchor;
   readonly padWidthCm: number | null;
   readonly comfortableSwipeCm: number | null;
+  /**
+   * Overrides the per-candidate sample floor. A fine-tune screens each candidate with one
+   * Quick-sized block, so its floor is the Quick floor of its own roster rather than the
+   * standard floor of the full one (doc 17 §17.7).
+   */
+  readonly minimumTrialsPerCandidate?: number;
 }
 
 export interface PlannedCalibrationRound {
@@ -91,7 +97,7 @@ function specFor(context: CalibrationContext, bracket: SearchBracket) {
     roundBudget: roundBudget(context.mode),
     mode: context.mode,
     seed: context.seed,
-    calibrationVersion: CALIBRATION_MODEL_V1.version,
+    calibrationVersion: CALIBRATION_MODEL_V2.version,
   } as const;
 }
 
@@ -291,7 +297,7 @@ export async function analyseCalibration(
     spec: specFor(context, bracket),
     params: CALIBRATION_PARAMS,
     rounds,
-    minimumTrialsPerCandidate: minimumTrials(context.mode),
+    minimumTrialsPerCandidate: context.minimumTrialsPerCandidate ?? minimumTrials(context.mode),
     deviceDpi: context.deviceDpi,
   };
 
@@ -331,7 +337,7 @@ export async function analyseCalibration(
  * insufficient. That is exactly what happened the first time a real Quick session ran, which
  * is why the roster is the authority here rather than a list of keys.
  */
-function minimumTrials(mode: SessionMode): number {
+export function minimumTrials(mode: SessionMode): number {
   const minimums = CALIBRATION_PARAMS.minimumValidTrials;
   return scoredTestsForMode(mode).reduce((sum, definition) => {
     const entry = minimums[definition.key];

@@ -153,6 +153,12 @@ export interface CalibrationResult {
    * (log2 counts/360). Empty when too few resamples produced a surface.
    */
   readonly fitBand: readonly { readonly x: number; readonly low: number; readonly high: number }[];
+  /**
+   * Set when the fitted vertex fell outside the measured span: the curve sloped towards a
+   * peak the session never reached. Never `peak_found` in that case — a peak is reported only
+   * where it was measured — but the direction is the most useful thing such a session learnt.
+   */
+  readonly peakBeyondMeasured: "below" | "above" | null;
   readonly stopReason: CalibrationDecision;
   readonly constraint: ParameterConstraint;
   readonly seed: bigint;

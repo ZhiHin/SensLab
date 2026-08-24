@@ -1,6 +1,7 @@
 import type { AlgorithmKind } from "../types/vocabulary";
 import { AIM_PROFILE_RULES_V1 } from "./aim-profile-rules-v1";
 import { CALIBRATION_MODEL_V1 } from "./calibration-model-v1";
+import { CALIBRATION_MODEL_V2 } from "./calibration-model-v2";
 import { CONFIDENCE_MODEL_V1 } from "./confidence-model-v1";
 import { REFERENCE_DIST_PROVISIONAL_V1 } from "./reference-dist-provisional-v1";
 import { REFERENCE_DIST_PROVISIONAL_V2 } from "./reference-dist-provisional-v2";
@@ -11,6 +12,7 @@ import type { ParameterSet } from "./types";
 export * from "./types";
 export * from "./aim-profile-rules-v1";
 export * from "./calibration-model-v1";
+export * from "./calibration-model-v2";
 export * from "./confidence-model-v1";
 export * from "./reference-dist-provisional-v1";
 export * from "./reference-dist-provisional-v2";
@@ -29,7 +31,7 @@ export * from "./scoring-model-v2";
 // no `any`, and every concrete set stays fully typed at its own call sites.
 export const ALL_PARAMETER_SETS: readonly ParameterSet<unknown>[] = Object.freeze([
   SCORING_MODEL_V2,
-  CALIBRATION_MODEL_V1,
+  CALIBRATION_MODEL_V2,
   CONFIDENCE_MODEL_V1,
   AIM_PROFILE_RULES_V1,
   REFERENCE_DIST_PROVISIONAL_V2,
@@ -44,6 +46,7 @@ export const ALL_PARAMETER_SETS: readonly ParameterSet<unknown>[] = Object.freez
  */
 export const HISTORICAL_PARAMETER_SETS: readonly ParameterSet<unknown>[] = Object.freeze([
   SCORING_MODEL_V1,
+  CALIBRATION_MODEL_V1,
   REFERENCE_DIST_PROVISIONAL_V1,
 ]);
 
@@ -56,7 +59,7 @@ export const RELEASED_PARAMETER_SETS: readonly ParameterSet<unknown>[] = Object.
 /** The version currently in force for each algorithm kind. */
 export const CURRENT_VERSIONS: Readonly<Record<AlgorithmKind, string>> = Object.freeze({
   scoring: SCORING_MODEL_V2.version,
-  calibration: CALIBRATION_MODEL_V1.version,
+  calibration: CALIBRATION_MODEL_V2.version,
   confidence: CONFIDENCE_MODEL_V1.version,
   aim_profile: AIM_PROFILE_RULES_V1.version,
   reference_distribution: REFERENCE_DIST_PROVISIONAL_V2.version,

@@ -2,7 +2,7 @@ import "server-only";
 import type { CalibrationResult } from "@/core/calibration";
 import {
   AIM_PROFILE_RULES_V1,
-  CALIBRATION_MODEL_V1,
+  CALIBRATION_MODEL_V2,
   CONFIDENCE_MODEL_V1,
   CURRENT_VERSIONS,
   REFERENCE_DIST_PROVISIONAL_V2,
@@ -72,12 +72,23 @@ export function readHardwareSnapshot(
 
 /** The per-mode target: the scored roster's standard trial counts × candidates × rounds. */
 export function targetTrialsForMode(mode: SessionMode): number {
+  if (mode === "fine_tune") {
+    // Screening over every candidate plus a duel run to its budget (doc 17 §17.7).
+    const { offsets, screeningTrialsPerBlock, duelTrialsPerBlock, duelQuartetBudget } =
+      CALIBRATION_MODEL_V2.params.fineTune;
+    const perBlock = (table: Readonly<Record<string, number>>) =>
+      Object.values(table).reduce((sum, count) => sum + count, 0);
+    return (
+      offsets.length * perBlock(screeningTrialsPerBlock) +
+      duelQuartetBudget * 4 * perBlock(duelTrialsPerBlock)
+    );
+  }
   const perCandidate = scoredTestsForMode(mode).reduce(
     (sum, definition) => sum + definition.trialCount(mode),
     0,
   );
-  const candidates = CALIBRATION_MODEL_V1.params.candidatesPerRound;
-  const rounds = CALIBRATION_MODEL_V1.params.roundBudget;
+  const candidates = CALIBRATION_MODEL_V2.params.candidatesPerRound;
+  const rounds = CALIBRATION_MODEL_V2.params.roundBudget;
   const pick = <T>(value: { quick: T; standard: T; advanced: T }): T =>
     mode === "advanced" ? value.advanced : mode === "quick" ? value.quick : value.standard;
   return perCandidate * pick(candidates) * pick(rounds);
@@ -91,6 +102,8 @@ export interface GenerateRecommendationInput {
   readonly rawInputEffective: boolean;
   readonly windowResized: boolean;
   readonly pointerLockLosses: number;
+  /** Set by a fine-tune: the new row supersedes this one (doc 16 §16.9). */
+  readonly parentRecommendationId?: string;
 }
 
 export async function generateRecommendation(
@@ -157,6 +170,7 @@ export async function generateRecommendation(
           confidence: versions.confidence,
         },
         confidenceBreakdown: recommendation.quality.confidence ?? { index: 0, components: [] },
+        parentRecommendationId: input.parentRecommendationId ?? null,
       },
       tx,
     );

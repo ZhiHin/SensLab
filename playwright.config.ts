@@ -55,8 +55,16 @@ export default defineConfig({
    */
   projects: [
     {
+      // One sign-in for the whole suite, saved as storage state. Signing in per test spends
+      // the account's rate-limit budget (`SENS-SEC-011`) on setup rather than on testing.
+      name: "setup",
+      testMatch: /auth\.setup\.ts$/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "chromium",
-      testIgnore: [/lab\..*\.spec\.ts$/, /\.locked\.spec\.ts$/],
+      testIgnore: [/lab\..*\.spec\.ts$/, /\.locked\.spec\.ts$/, /auth\.setup\.ts$/],
+      dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"] },
     },
     {

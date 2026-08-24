@@ -105,9 +105,13 @@ export function scoredTestsForMode(mode: SessionMode): readonly TestDefinition[]
         speedTest,
         recoilTest,
       ];
-    case "standard":
     case "validation":
+      // The reduced battery of doc 17 §17.2: the most sensitivity signal per second.
+      return [flickTest, microTest, trackingTest];
     case "fine_tune":
+      // Screening and duel blocks are short; the two fastest-signal tests (doc 17 §17.7).
+      return [flickTest, microTest];
+    case "standard":
       return SCORED_TESTS;
   }
 }

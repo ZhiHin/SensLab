@@ -43,6 +43,8 @@ export interface ResponseCurve {
   } | null;
   readonly comfortBand: { readonly lo: number; readonly hi: number };
   readonly constraint: { readonly maxCm360: number } | null;
+  /** The fit sloped towards a peak outside the measured span, in this direction. */
+  readonly peakBeyondMeasured: "below" | "above" | null;
   /** The player's own starting sensitivity, if they told us. The detail that makes it personal. */
   readonly currentSens: { readonly cm360: number } | null;
   /** The minimum detectable effect in score units — the resolution of "different". */
@@ -115,6 +117,7 @@ export function buildResponseCurve(
       result.constraint.maxCmPer360 === null ? null : { maxCm360: result.constraint.maxCmPer360 },
     currentSens: currentCmPer360 === null ? null : { cm360: currentCmPer360 },
     minimumDetectableEffect: result.minimumDetectableEffect,
+    peakBeyondMeasured: result.peakBeyondMeasured,
     dpi,
   };
 }

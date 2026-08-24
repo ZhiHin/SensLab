@@ -1,6 +1,6 @@
 import "server-only";
-import { bracketOf, type SearchBracket } from "@/core/calibration";
-import { CALIBRATION_MODEL_V1, CURRENT_VERSIONS } from "@/core/params";
+import { bracketOf, toLogSensitivity, type SearchBracket } from "@/core/calibration";
+import { CALIBRATION_MODEL_V2, CURRENT_VERSIONS } from "@/core/params";
 import {
   countsPer360FromCm,
   cmPer360FromCounts,
@@ -87,7 +87,7 @@ function maxImpliedCountsPerSecond(dpi: number): number {
 }
 
 function roundBudget(mode: SessionMode): number {
-  const budget = CALIBRATION_MODEL_V1.params.roundBudget;
+  const budget = CALIBRATION_MODEL_V2.params.roundBudget;
   return mode === "advanced" ? budget.advanced : mode === "quick" ? budget.quick : budget.standard;
 }
 
@@ -226,11 +226,19 @@ export async function submitCalibrationRound(
   const candidates = await calibrationRepo.listCandidates(input.sessionId);
   const currentRound = Math.max(0, ...candidates.map((candidate) => candidate.roundIndex));
   if (!brackets.has(currentRound)) {
-    // The round that was just run: its bracket was handed out at planning time and is the one
-    // the planner would derive again from the previous round's decision.
-    const previous = brackets.get(currentRound - 1);
-    const replanned = await planCalibrationRound(actor, context, currentRound, previous ?? null);
-    brackets.set(currentRound, replanned.bracket);
+    // The round that was just run has no audit row yet. Its bracket is recovered from its own
+    // candidates: they sit exactly at the bracket's ends (doc 13 §13.5), so the span of the
+    // generated candidates — the anchor excluded, it re-tests an earlier round's centre — *is*
+    // the bracket the round was planned from. Nothing is re-derived from the previous round,
+    // whose decision (narrow or shift) is what moved the bracket in the first place.
+    const own = candidates
+      .filter((candidate) => candidate.roundIndex === currentRound && candidate.source !== "anchor")
+      .map((candidate) => toLogSensitivity(candidate.countsPer360) as number);
+    if (own.length > 0) {
+      const low = Math.min(...own);
+      const high = Math.max(...own);
+      brackets.set(currentRound, bracketOf((low + high) / 2, (high - low) / 2));
+    }
   }
 
   const analysis = await analyseCalibration(actor, context, brackets);

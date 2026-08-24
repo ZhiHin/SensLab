@@ -122,6 +122,37 @@ describe("assembling a peak_found recommendation", () => {
     expect(recommendation.quality.settingsReliability).toBe("normal");
   });
 
+  it("clips both ranges at the pad-width ceiling and keeps them nested — doc 16 §16.3", () => {
+    const hp = recommendation.ranges.highPerformance;
+    expect(hp).not.toBeNull();
+    if (hp === null) return;
+    // A ceiling inside the credible interval: the high-performance range is cut to it, and
+    // the comfort range still contains what is left.
+    const ceiling = (hp.lowCm360 + hp.highCm360) / 2;
+    const clipped = assembleRecommendation(
+      inputsFor({
+        ...calibration,
+        constraint: { maxCmPer360: ceiling, source: "pad_width", conflict: false },
+      }),
+    );
+    expect(clipped.ranges.highPerformance?.highCm360).toBeCloseTo(ceiling, 9);
+    expect(clipped.ranges.highPerformance?.lowCm360).toBeCloseTo(hp.lowCm360, 9);
+    expect(clipped.ranges.comfort.lowCm360).toBeLessThanOrEqual(
+      clipped.ranges.highPerformance?.lowCm360 ?? 0,
+    );
+    expect(clipped.ranges.constraint?.source).toBe("pad_width");
+
+    // A ceiling below the whole interval cannot be honoured by clipping, and inventing a
+    // reversed range would be worse than reporting what was measured.
+    const below = assembleRecommendation(
+      inputsFor({
+        ...calibration,
+        constraint: { maxCmPer360: hp.lowCm360 / 2, source: "measured", conflict: true },
+      }),
+    );
+    expect(below.ranges.highPerformance?.highCm360).toBeCloseTo(hp.highCm360, 9);
+  });
+
   it("builds a response curve that redraws without the fit", () => {
     const curve = recommendation.evidence.responseCurve;
     expect(curve.candidates.length).toBe(calibration.estimates.length);
