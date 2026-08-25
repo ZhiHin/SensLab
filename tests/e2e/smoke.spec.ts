@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { CURRENT_VERSIONS } from "@/core/params";
 
 /**
  * Phase 1 smoke coverage.
@@ -31,12 +32,17 @@ test.describe("application shell", () => {
   });
 
   test("shows the active algorithm versions", async ({ page }) => {
-    // Phase 6 moved scoring to v2 and Phase 8 the calibration set; the shell shows whatever
-    // is current, never a literal.
+    // The shell shows whatever is current, so this reads the registry rather than restating
+    // it: a literal here would have to be edited on every release, which makes the test a
+    // chore rather than a check, and an outdated literal would keep passing on a stale page.
     await page.goto("/");
-    await expect(page.getByText("scoring_model_v2")).toBeVisible();
-    await expect(page.getByText("calibration_model_v2")).toBeVisible();
-    await expect(page.getByText("confidence_model_v1")).toBeVisible();
+    for (const version of [
+      CURRENT_VERSIONS.scoring,
+      CURRENT_VERSIONS.calibration,
+      CURRENT_VERSIONS.confidence,
+    ]) {
+      await expect(page.getByText(version)).toBeVisible();
+    }
   });
 
   test("serves the security headers", async ({ page }) => {

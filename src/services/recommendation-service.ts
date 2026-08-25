@@ -2,7 +2,7 @@ import "server-only";
 import type { CalibrationResult } from "@/core/calibration";
 import {
   AIM_PROFILE_RULES_V1,
-  CALIBRATION_MODEL_V2,
+  CALIBRATION_MODEL_V3,
   CONFIDENCE_MODEL_V1,
   CURRENT_VERSIONS,
   REFERENCE_DIST_PROVISIONAL_V2,
@@ -97,7 +97,7 @@ export function targetTrialsForMode(mode: SessionMode): number {
   if (mode === "fine_tune") {
     // Screening over every candidate plus a duel run to its budget (doc 17 §17.7).
     const { offsets, screeningTrialsPerBlock, duelTrialsPerBlock, duelQuartetBudget } =
-      CALIBRATION_MODEL_V2.params.fineTune;
+      CALIBRATION_MODEL_V3.params.fineTune;
     const perBlock = (table: Readonly<Record<string, number>>) =>
       Object.values(table).reduce((sum, count) => sum + count, 0);
     return (
@@ -109,8 +109,8 @@ export function targetTrialsForMode(mode: SessionMode): number {
     (sum, definition) => sum + definition.trialCount(mode),
     0,
   );
-  const candidates = CALIBRATION_MODEL_V2.params.candidatesPerRound;
-  const rounds = CALIBRATION_MODEL_V2.params.roundBudget;
+  const candidates = CALIBRATION_MODEL_V3.params.candidatesPerRound;
+  const rounds = CALIBRATION_MODEL_V3.params.roundBudget;
   const pick = <T>(value: { quick: T; standard: T; advanced: T }): T =>
     mode === "advanced" ? value.advanced : mode === "quick" ? value.quick : value.standard;
   return perCandidate * pick(candidates) * pick(rounds);

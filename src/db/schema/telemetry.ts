@@ -37,6 +37,8 @@ export const researchConsents = pgTable(
       sql`(${table.userId} is null) <> (${table.guestSessionId} is null)`,
     ),
     index("research_consents_subject_idx").on(table.userId, table.scope),
+    // `on delete cascade` from a guest session, enforced per deleted parent row.
+    index("research_consents_guest_session_idx").on(table.guestSessionId),
   ],
 );
 
@@ -66,6 +68,9 @@ export const telemetryBatches = pgTable(
   (table) => [
     index("telemetry_batches_retention_idx").on(table.retentionExpiresAt),
     index("telemetry_batches_session_idx").on(table.sessionId),
+    // Rounds and consents both cascade into this table; neither delete had an index to use.
+    index("telemetry_batches_round_idx").on(table.roundId),
+    index("telemetry_batches_consent_idx").on(table.consentId),
   ],
 );
 
@@ -86,7 +91,16 @@ export const analyticsEvents = pgTable(
     properties: jsonb("properties").notNull().default({}),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("analytics_events_key_time_idx").on(table.eventKey, table.occurredAt)],
+  (table) => [
+    index("analytics_events_key_time_idx").on(table.eventKey, table.occurredAt),
+    // Both references are `on delete set null`, and Postgres enforces that with a query
+    // against this table for every parent row removed. Unindexed, deleting one account or one
+    // session sequentially scans what is designed to be the largest table in the schema —
+    // which is exactly what account deletion (`SENS-SEC-021`) and the retention sweep
+    // (`SENS-BR-003`) do, in bulk.
+    index("analytics_events_session_idx").on(table.sessionId),
+    index("analytics_events_user_idx").on(table.userId),
+  ],
 );
 
 export type ResearchConsentRow = typeof researchConsents.$inferSelect;

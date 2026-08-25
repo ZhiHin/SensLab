@@ -1,7 +1,6 @@
-import { CALIBRATION_MODEL_V1 } from "@/core/params";
+import { CALIBRATION_MODEL_V3 } from "@/core/params";
 import { deriveRng } from "@/core/random";
-import { countsPer360FromCm } from "@/core/sensitivity/canonical";
-import { bracketOf, toLogSensitivity } from "@/core/calibration/bracket";
+import { bracketOf, domainBounds } from "@/core/calibration/bracket";
 import { anchorCandidate, generateCandidates } from "@/core/calibration/candidates";
 import { logSensitivity } from "@/core/types/brand";
 import { runCalibration, type CalibrationInput, type RoundInput } from "@/core/calibration/engine";
@@ -14,7 +13,10 @@ import { generateTrials, type PlayerShape } from "./synthetic-player";
  * shared by the recovery suite and the recommendation assembly tests.
  */
 
-const PARAMS = CALIBRATION_MODEL_V1.params;
+// The set that actually ships. The golden session pins v1 deliberately and builds its own
+// session for that reason; everything reached through this helper is asserting what a player
+// gets today, so it must run the current model rather than a superseded one.
+const PARAMS = CALIBRATION_MODEL_V3.params;
 const DPI = 800;
 
 function specFor(
@@ -24,8 +26,11 @@ function specFor(
 ): CalibrationSpec {
   return {
     parameterName: "hipfire_counts_per_360",
-    domainLow: toLogSensitivity(countsPer360FromCm(PARAMS.domainCmPer360.max, DPI)),
-    domainHigh: toLogSensitivity(countsPer360FromCm(PARAMS.domainCmPer360.min, DPI)),
+    // The production bounds, from the production function. Restating the conversion here is how
+    // this helper previously ended up with low and high transposed, which silently collapsed
+    // every simulated bracket to a point once the engine started clipping bracket *ends*.
+    domainLow: domainBounds(PARAMS, DPI).low,
+    domainHigh: domainBounds(PARAMS, DPI).high,
     constraint:
       maxCmPer360 === null
         ? { maxCmPer360: null, source: "none", conflict: false }
@@ -36,7 +41,7 @@ function specFor(
     roundBudget,
     mode: "standard",
     seed: 20260822n,
-    calibrationVersion: CALIBRATION_MODEL_V1.version,
+    calibrationVersion: CALIBRATION_MODEL_V3.version,
   };
 }
 

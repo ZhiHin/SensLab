@@ -3,7 +3,7 @@ import { toLogSensitivity } from "@/core/calibration";
 import { applyValidationMultiplier } from "@/core/confidence";
 import { getMetricDefinition } from "@/core/metrics/registry";
 import {
-  CALIBRATION_MODEL_V2,
+  CALIBRATION_MODEL_V3,
   CONFIDENCE_MODEL_V1,
   CURRENT_VERSIONS,
   SCORING_MODEL_V2,
@@ -66,7 +66,7 @@ import { readHardwareSnapshot, type HardwareSnapshot } from "./recommendation-se
  * estimate itself is not deleted or edited — it remains the calibration's finding.
  */
 
-const PARAMS = CALIBRATION_MODEL_V2.params;
+const PARAMS = CALIBRATION_MODEL_V3.params;
 const PROTOCOL = PARAMS.validation;
 
 /** Blind labels for the two arms — deliberately disjoint from the calibration's A–F. */

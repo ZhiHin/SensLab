@@ -1,7 +1,7 @@
 import { quadraticVertex, weightedPolynomialFit } from "../statistics";
 import { logSensitivity } from "../types/brand";
 import type { CalibrationDecision } from "../types/vocabulary";
-import { bracketOf } from "./bracket";
+import { clipBracket } from "./bracket";
 import type { CandidateEstimate, ResponseSurfaceFit, SearchBracket } from "./contracts";
 
 /**
@@ -102,10 +102,27 @@ export function decideNextBracket(input: SurfaceInput): SurfaceOutcome {
   const { bracket, narrowing } = input;
   const width = bracket.halfWidth;
 
-  const clip = (value: number): number => {
-    const high = Math.min(input.domainHigh, input.constraintHigh ?? Infinity);
-    return Math.min(Math.max(value, input.domainLow), high);
-  };
+  /**
+   * Places the next bracket **inside the admissible domain**, not merely centred on a point
+   * within it.
+   *
+   * Clipping the centre alone leaves `centre − halfWidth` outside the bound, and candidates
+   * are generated at the bracket's ends (doc 13 §13.5) — so a search that walked into the
+   * floor tested sensitivities the product documents as inadmissible, and could fit a curve
+   * across them. `clipBracket` slides the whole bracket inside instead, which is what it
+   * exists for (doc 13 §13.3).
+   */
+  const place = (centre: number, halfWidth: number): SearchBracket =>
+    clipBracket(
+      {
+        centre: logSensitivity(centre),
+        halfWidth,
+        domainLow: logSensitivity(input.domainLow),
+        domainHigh: logSensitivity(input.domainHigh),
+        constraintHigh: input.constraintHigh === null ? null : logSensitivity(input.constraintHigh),
+      },
+      narrowing.minHalfWidth,
+    );
 
   const best = bestEstimate(input.estimates);
 
@@ -117,12 +134,11 @@ export function decideNextBracket(input: SurfaceInput): SurfaceOutcome {
       vertexX <= (bracket.high as number) + tolerance;
 
     if (inside) {
-      const centre = clip(vertexX);
       const halfWidth = Math.max(narrowing.gamma * width, narrowing.minHalfWidth);
       return {
         fit,
         decision: "narrow",
-        nextBracket: bracketOf(centre, halfWidth),
+        nextBracket: place(vertexX, halfWidth),
         unclippedVertexX: vertexX,
       };
     }
@@ -134,7 +150,7 @@ export function decideNextBracket(input: SurfaceInput): SurfaceOutcome {
     return {
       fit,
       decision: "shift",
-      nextBracket: bracketOf(clip((bracket.centre as number) + direction * width), width),
+      nextBracket: place((bracket.centre as number) + direction * width, width),
       unclippedVertexX: vertexX,
     };
   }
@@ -154,7 +170,7 @@ export function decideNextBracket(input: SurfaceInput): SurfaceOutcome {
     return {
       fit,
       decision: "shift",
-      nextBracket: bracketOf(clip((bracket.centre as number) + direction * width), width),
+      nextBracket: place((bracket.centre as number) + direction * width, width),
       unclippedVertexX: null,
     };
   }
@@ -164,8 +180,8 @@ export function decideNextBracket(input: SurfaceInput): SurfaceOutcome {
   return {
     fit,
     decision: "narrow_conservative",
-    nextBracket: bracketOf(
-      clip(bestX),
+    nextBracket: place(
+      bestX,
       Math.max(narrowing.conservativeGamma * width, narrowing.minHalfWidth),
     ),
     unclippedVertexX: null,

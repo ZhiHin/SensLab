@@ -274,8 +274,24 @@ export function runCalibration(input: CalibrationInput): CalibrationResult {
   const peakBeyondMeasured =
     vertexX === null ? null : vertexX < spanLow ? "below" : vertexX > spanHigh ? "above" : null;
 
+  // Does the response bend at all?
+  //
+  // `distinguishable` asks whether *any* candidate pair separates. That is the right question
+  // for whether to keep searching (doc 13 §13.10 condition 3) and the wrong one for claiming a
+  // peak: across nine pooled candidates it is an OR over thirty-six comparisons at the
+  // configured level with no multiplicity control, so a response with no curvature clears it far
+  // more often than the level implies. A peak asserts that the curve *bends*, so from
+  // `calibration_model_v3` that is what is tested — by doc 13 §13.9’s own rule, at doc 13
+  // §13.9’s own level. Selected by the released parameter set rather than unconditionally, so a
+  // session stored under v1 or v2 still re-derives the verdict it was given (`SENS-BR-030`).
+  const curvature = latest.bootstrap.curvatureInterval;
+  const bends =
+    input.params.statistics.requireSignificantCurvature !== true ||
+    (curvature !== null && curvature.high < 0);
+
   const peak =
     distinguishable &&
+    bends &&
     vertexX !== null &&
     peakBeyondMeasured === null &&
     latest.bootstrap.vertexInterval !== null;

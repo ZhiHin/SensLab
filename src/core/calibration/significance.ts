@@ -47,6 +47,18 @@ export interface BootstrapOutcome {
   readonly vertexInterval: CredibleInterval | null;
   /** Fraction of resamples whose fit was concave — a direct measure of peak evidence. */
   readonly concaveFraction: number;
+  /**
+   * Credible interval on the quadratic coefficient `b₂` — the curvature itself.
+   *
+   * Doc 13 §13.9 calls two candidates distinguishable when the bootstrap interval on their
+   * difference excludes zero. This is that same rule applied to the quantity a peak verdict
+   * asserts: that the response *bends*. An interval containing zero means the data are
+   * consistent with a flat response whatever shape the single point estimate happened to take.
+   *
+   * Consumed from `calibration_model_v3` onward; see that set for the measured effect.
+   * Null when no resample produced a surface at all.
+   */
+  readonly curvatureInterval: CredibleInterval | null;
   /** Per-pair differences: `key = "i:j"`, value = the resampled distribution's interval. */
   readonly pairIntervals: ReadonlyMap<string, CredibleInterval>;
   readonly resamplesUsed: number;
@@ -155,9 +167,21 @@ export function bootstrapPipeline(input: BootstrapInput): BootstrapOutcome {
         })()
       : null;
 
+  // The curvature interval comes from the same resamples as everything else, so it cannot
+  // disagree with the vertex interval about what the bootstrap saw.
+  const curvatures = surfaceSamples.map((c) => c[2] as number).sort((a, b) => a - b);
+  const curvatureInterval =
+    curvatures.length === 0
+      ? null
+      : (() => {
+          const i = percentileInterval(curvatures, median(curvatures), input.level);
+          return { low: i.low, high: i.high, level: input.level };
+        })();
+
   return {
     vertexSamples,
     vertexInterval,
+    curvatureInterval,
     concaveFraction: used === 0 ? 0 : concave / used,
     pairIntervals,
     resamplesUsed: used,

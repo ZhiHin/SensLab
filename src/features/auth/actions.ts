@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { clientAddressFrom } from "@/lib/client-address";
 import {
   claimGuestSessionForUser,
   completePasswordReset,
@@ -54,8 +55,8 @@ function fieldErrorsFrom(error: z.ZodError): Readonly<Record<string, string>> {
 
 async function requestMetadata(): Promise<{ ip?: string; userAgent?: string }> {
   const headerList = await headers();
-  const forwarded = headerList.get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim();
+  // Not the leftmost entry: that is the one the client writes. See `clientAddressFrom`.
+  const ip = clientAddressFrom(headerList.get("x-forwarded-for"), getEnv().TRUSTED_PROXY_HOPS);
   const userAgent = headerList.get("user-agent") ?? undefined;
   return {
     ...(ip === undefined || ip.length === 0 ? {} : { ip }),

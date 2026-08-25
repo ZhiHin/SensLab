@@ -77,6 +77,24 @@ function abuseHashes(metadata: RequestMetadata): {
   };
 }
 
+/**
+ * Names a rate-limit bucket without writing down who it is about.
+ *
+ * The counters are persisted, so a bucket keyed `signin-account:someone@example.com` would put
+ * a plaintext address in a table outside the account model: readable by anything with database
+ * access, an enumeration of who has tried to sign in and when, and — because nothing joins it
+ * to a user row — untouched by account deletion (`SENS-SEC-021`). The same argument applies to
+ * a raw IP, which is personal data in its own right.
+ *
+ * The identifier is hashed with the same keyed digest used for the abuse fingerprints on auth
+ * events, so the limiter keeps working exactly as before while the table stops being a record
+ * of people. The prefix stays readable so an operator can still tell which limiter a row
+ * belongs to.
+ */
+function bucketKey(prefix: string, identifier: string): string {
+  return `${prefix}:${hashAbuseIdentifier(identifier, getEnv().ABUSE_HASH_SALT).toString("base64url")}`;
+}
+
 async function enforceRateLimit(
   bucket: string,
   limit: number,
@@ -97,7 +115,7 @@ export async function register(
   input: SignUpInput,
   metadata: RequestMetadata = {},
 ): Promise<RegistrationResult> {
-  await enforceRateLimit(`register:${metadata.ip ?? "unknown"}`, 5, 3600);
+  await enforceRateLimit(bucketKey("register", metadata.ip ?? "unknown"), 5, 3600);
 
   const env = getEnv();
   const now = new Date();
@@ -165,8 +183,8 @@ export async function signIn(
   input: SignInInput,
   metadata: RequestMetadata = {},
 ): Promise<AuthOutcome> {
-  await enforceRateLimit(`signin:${metadata.ip ?? "unknown"}`, 10, 900);
-  await enforceRateLimit(`signin-account:${input.email}`, 10, 900);
+  await enforceRateLimit(bucketKey("signin", metadata.ip ?? "unknown"), 10, 900);
+  await enforceRateLimit(bucketKey("signin-account", input.email), 10, 900);
 
   const env = getEnv();
   const now = new Date();
@@ -239,8 +257,8 @@ export async function requestPasswordReset(
   input: RequestPasswordResetInput,
   metadata: RequestMetadata = {},
 ): Promise<PasswordResetRequestResult> {
-  await enforceRateLimit(`reset:${metadata.ip ?? "unknown"}`, 3, 3600);
-  await enforceRateLimit(`reset-account:${input.email}`, 3, 3600);
+  await enforceRateLimit(bucketKey("reset", metadata.ip ?? "unknown"), 3, 3600);
+  await enforceRateLimit(bucketKey("reset-account", input.email), 3, 3600);
 
   const env = getEnv();
   const now = new Date();

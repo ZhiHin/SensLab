@@ -6,7 +6,7 @@ import {
   resolveConstraint,
   toLogSensitivity,
 } from "@/core/calibration";
-import { CALIBRATION_MODEL_V2, CURRENT_VERSIONS, SCORING_MODEL_V2 } from "@/core/params";
+import { CALIBRATION_MODEL_V3, CURRENT_VERSIONS, SCORING_MODEL_V2 } from "@/core/params";
 import { deriveRng } from "@/core/random";
 import { cmPer360FromCounts } from "@/core/sensitivity/canonical";
 import { computeObjective, type ObservedTrial } from "@/core/scoring";
@@ -76,7 +76,7 @@ import { VALIDATION_BLIND_LABELS } from "./validation-service";
  * the original; "nothing changed" is the expected common outcome and is stated as such.
  */
 
-const PARAMS = CALIBRATION_MODEL_V2.params;
+const PARAMS = CALIBRATION_MODEL_V3.params;
 const PROTOCOL = PARAMS.fineTune;
 const FIRST_DUEL_BLOCK = 10;
 const FIRST_SCREENING_BLOCK = 1;

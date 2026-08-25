@@ -8,7 +8,7 @@ import {
   type DimensionChange,
   type RecommendationChange,
 } from "@/core/comparison";
-import { AIM_PROFILE_RULES_V1, CALIBRATION_MODEL_V2, SCORING_MODEL_V2 } from "@/core/params";
+import { AIM_PROFILE_RULES_V1, CALIBRATION_MODEL_V3, SCORING_MODEL_V2 } from "@/core/params";
 import { sensitivityBand } from "@/core/recommendation";
 import type { DimensionKey } from "@/core/types/vocabulary";
 import { historyRepo } from "@/repositories";
@@ -29,7 +29,7 @@ import { notFound } from "@/lib/errors";
  * facts and shapes the result for the screen.
  */
 
-const LEVEL = CALIBRATION_MODEL_V2.params.statistics.credibleIntervalLevel;
+const LEVEL = CALIBRATION_MODEL_V3.params.statistics.credibleIntervalLevel;
 const PER_SIGMA = SCORING_MODEL_V2.params.displayScaling.perSigma;
 
 export interface HistoryItem {

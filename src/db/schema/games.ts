@@ -181,6 +181,9 @@ export const userGameSettings = pgTable(
       table.scopeKey,
     ),
     index("user_game_settings_user_idx").on(table.userId),
+    // The unique index leads with `user_id`, so it cannot serve the cascade from a deleted
+    // hardware profile.
+    index("user_game_settings_hardware_profile_idx").on(table.hardwareProfileId),
   ],
 );
 

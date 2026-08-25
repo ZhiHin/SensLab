@@ -18,7 +18,7 @@ import {
   type RoundInput,
   type SearchBracket,
 } from "@/core/calibration";
-import { CALIBRATION_MODEL_V2, SCORING_MODEL_V2 } from "@/core/params";
+import { CALIBRATION_MODEL_V3, SCORING_MODEL_V2 } from "@/core/params";
 import { deriveRng } from "@/core/random";
 import { computeObjective } from "@/core/scoring";
 import { logSensitivity } from "@/core/types/brand";
@@ -51,7 +51,7 @@ import { scoredTestsForMode } from "@/test-engine/tests";
  * a number with no indication of how much to trust it.
  */
 
-const CALIBRATION_PARAMS = CALIBRATION_MODEL_V2.params;
+const CALIBRATION_PARAMS = CALIBRATION_MODEL_V3.params;
 const SCORING_PARAMS = SCORING_MODEL_V2.params;
 
 export interface CalibrationContext {
@@ -97,7 +97,7 @@ function specFor(context: CalibrationContext, bracket: SearchBracket) {
     roundBudget: roundBudget(context.mode),
     mode: context.mode,
     seed: context.seed,
-    calibrationVersion: CALIBRATION_MODEL_V2.version,
+    calibrationVersion: CALIBRATION_MODEL_V3.version,
   } as const;
 }
 

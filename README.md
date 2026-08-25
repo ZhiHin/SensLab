@@ -13,17 +13,20 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 10 — UI/UX Polish and Responsive Experience.** The project follows a phased plan defined in
-[`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
-authentication, the pure-domain maths, CI — the engine that runs an aim session, all thirteen
-aim tests doc 09 specifies with every metric doc 10 defines, the statistical engine that turns
-those measurements into a response curve and a recommendation, the complete machinery for
-turning that recommendation into a game setting, and — new in Phase 7 — the end-to-end loop a
-player actually runs: `/calibrate` starts a blinded session, the server plans each round and
-decides when to stop, and `/results/[id]` shows the recommendation as an **object, not a
-number**, and — new in Phase 8 — the product **checks its own answer**: a blinded,
-counterbalanced head-to-head against the sensitivity the player came in with, and a blinded
-refinement inside the uncertainty around the recommendation.
+**Phase 11 — Hardening, Audit and Production Readiness.** The project follows a phased plan
+defined in [`docs/phase-0/`](docs/phase-0/), and Phase 11 is the last of them. Everything the
+plan describes is built: the architecture, database and authentication; the engine that runs an
+aim session and all thirteen tests doc 09 specifies with every metric doc 10 defines; the
+statistical engine that turns those measurements into a response curve and a recommendation;
+the machinery that converts a recommendation into a game setting; the end-to-end loop a player
+runs at `/calibrate` and reads at `/results/[id]`; the product checking its own answer through
+blinded validation and fine-tuning; accounts, history and privacy; and the responsive,
+accessible interface around all of it.
+
+Phase 11 audited that work rather than extending it. What it found and fixed — including three
+defects in the calibration search and two in privacy and rate limiting — is recorded in
+[`docs/implementation/phase-11-completion.md`](docs/implementation/phase-11-completion.md),
+along with the limitations that remain and an explicit production-readiness classification.
 
 **The calibration is deterministic statistics, not AI** (`SENS-BR-002`). It is a noisy
 one-dimensional derivative-free search with a drift model, and it **refuses to invent a peak**:
@@ -357,6 +360,31 @@ The effort is deliberately concentrated in `core/`. A bug there produces a plaus
 confident, wrong number — nothing crashes and nothing looks broken — which is the failure mode
 this product can least afford. Detailed in
 [`29-testing-strategy.md`](docs/phase-0/29-testing-strategy.md).
+
+---
+
+## Operating it
+
+| Document                                                   | Covers                                                                                                                                    |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| [Deployment](docs/operations/deployment.md)                | Runtime requirements, environment, database roles, deploy sequence, health checks, scheduled work, and what is deliberately not included. |
+| [Release checklist](docs/operations/release-checklist.md)  | The checks a machine cannot make — algorithm versioning, verification honesty, configuration.                                             |
+| [Troubleshooting](docs/operations/troubleshooting.md)      | Symptoms with specific causes, and how to tell them from the ones that look the same.                                                     |
+| [Calibration methodology](docs/methodology/calibration.md) | What is measured, how the search and the statistics work, and what the product does not claim.                                            |
+
+Two settings deserve attention before a first deployment, because both fail quietly:
+
+- **`TRUSTED_PROXY_HOPS`** must match how many reverse proxies sit in front of the app.
+  `X-Forwarded-For` is client-writable to the left of the first hop you control, and that value
+  keys every per-IP rate limit. Deployment guide §2.
+- **`DATABASE_URL` must point at `senslab_app`**, not the owner role. The least-privilege
+  assertions in the integration suite pass vacuously against an over-privileged role.
+
+The retention sweep is the only scheduled job:
+
+```bash
+npm run sweep    # guest expiry, account deletions past their grace period, closed rate-limit windows
+```
 
 ---
 

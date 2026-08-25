@@ -138,3 +138,24 @@ test.describe("the measurement surface — SENS-UX-032", () => {
     expect(text).toMatch(/ready|measuring|get ready|paused/);
   });
 });
+
+test.describe("the error surfaces — doc 22 §22.6", () => {
+  test("renders a designed 404 that says nothing about what exists", async ({ page }) => {
+    // Both an unknown URL and a resource owned by somebody else land here, and the wording
+    // must not let a reader tell those apart (`SENS-SEC-010`).
+    const unknown = await page.goto("/no-such-page-at-all");
+    expect(unknown?.status()).toBe(404);
+    await expect(page.getByRole("heading", { name: /nothing here/i })).toBeVisible();
+
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(results.violations).toEqual([]);
+
+    // A real id shape that is simply not the reader's must produce the same screen, not a
+    // different message.
+    const foreign = await page.goto("/results/00000000-0000-7000-8000-000000000000");
+    expect(foreign?.status()).toBe(404);
+    await expect(page.getByRole("heading", { name: /nothing here/i })).toBeVisible();
+  });
+});

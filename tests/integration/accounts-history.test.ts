@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { CURRENT_VERSIONS } from "@/core/params";
 import { closeDb } from "@/db/client";
 import { hardwareProfiles, testSessions, users } from "@/db/schema";
 import { userRepo } from "@/repositories";
@@ -201,7 +202,10 @@ describe("history and comparison", () => {
     expect(item?.dpi).toBe(800);
     expect(item?.mode).toBe("quick");
     expect(item?.confidenceIndex).not.toBeNull();
-    expect(item?.versions.calibration).toBe("calibration_model_v2");
+    // The version in force, not a literal: history must record *which* algorithm produced the
+    // row (`SENS-BR-030`), and pinning the label here would turn every legitimate release into
+    // a failing test without telling anyone anything about history.
+    expect(item?.versions.calibration).toBe(CURRENT_VERSIONS.calibration);
     expect(history.profiles).toEqual([{ id: profile.id, name: "Main" }]);
 
     // Cross-tenant: the other account's history is empty, not filtered.

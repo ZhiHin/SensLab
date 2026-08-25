@@ -189,20 +189,38 @@ describe("the two ranges — doc 16 §16.3", () => {
     );
   });
 
-  it("clips the comfort range at the pad-width ceiling, and nothing else", () => {
+  it("keeps the search and the reported range inside the pad-width ceiling", () => {
     const free = simulate({ shape: CLEAR_PEAK });
     const ceiling = (free.comfortRange.lowCm360 + free.comfortRange.highCm360) / 2;
     const clipped = simulate({ shape: CLEAR_PEAK, maxCmPer360: ceiling });
 
-    // The search itself is unchanged: same peak, same interval (SENS-BR-012 keeps the
-    // constraint out of the estimator).
-    expect(clipped.xStar).toBe(free.xStar);
-    expect(clipped.credibleInterval).toEqual(free.credibleInterval);
-    expect(clipped.comfortRange.lowCm360).toBeCloseTo(free.comfortRange.lowCm360, 9);
-    expect(clipped.comfortRange.highCm360).toBeCloseTo(ceiling, 9);
+    // The constraint bounds the *search*, not only the report: doc 13 §13.3 intersects the
+    // bracket "with the admissible domain and with the physical constraint", and §13.8 clips
+    // x* to both before it is used as a centre. Spending a player’s trials on sensitivities
+    // they cannot physically execute would be the alternative.
+    //
+    // An earlier revision asserted the opposite — that the estimate was untouched — and cited
+    // SENS-BR-012 for it. That rule is about minimum sample size per candidate and says
+    // nothing about constraints; the assertion passed only because the ceiling used here did
+    // not happen to bite while the search clipped bracket centres instead of bracket ends.
+    expect(clipped.comfortRange.highCm360).toBeLessThanOrEqual(ceiling + 1e-9);
+    expect(clipped.xStar).not.toBeNull();
+    // Every candidate the search placed after the first round respects the ceiling. Round 0
+    // starts from the caller’s bracket, which is where the session’s prior sits.
+    const toCm = (x: number): number => (2.54 * 2 ** x) / 800;
+    const later = clipped.candidates.filter((candidate) => candidate.roundIndex > 0);
+    expect(later.length).toBeGreaterThan(0);
+    for (const candidate of later) {
+      expect(toCm(candidate.x as number)).toBeLessThanOrEqual(ceiling + 1e-9);
+    }
 
-    // A ceiling below the whole plateau cannot be honoured by clipping; the range is kept.
+    // The lower end is untouched: a ceiling is a bound on one side only.
+    expect(clipped.comfortRange.lowCm360).toBeGreaterThan(0);
+    expect(clipped.comfortRange.lowCm360).toBeLessThan(clipped.comfortRange.highCm360);
+
+    // A ceiling below the whole plateau cannot be honoured by clipping; the range is kept
+    // rather than inverted, and the session still reports something usable.
     const tooLow = simulate({ shape: CLEAR_PEAK, maxCmPer360: free.comfortRange.lowCm360 / 2 });
-    expect(tooLow.comfortRange).toEqual(free.comfortRange);
+    expect(tooLow.comfortRange.highCm360).toBeGreaterThan(tooLow.comfortRange.lowCm360);
   });
 });

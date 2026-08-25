@@ -208,6 +208,10 @@ export const validationRuns = pgTable(
     // The verdict must agree with the interval: "improved" requires an interval excluding
     // zero on the positive side, "worse" on the negative side. Enforced here so no code path
     // can persist a claim the data does not support.
+    // Both parents cascade into this table, so both deletes need an index here or they
+    // scan it whole. `recommendation_id` already has one through the unique constraint;
+    // `session_id` did not.
+    index("validation_runs_session_idx").on(table.sessionId),
     check(
       "validation_runs_verdict_matches_interval",
       sql`(${table.verdict} = 'improved' and ${table.compositeCiLow} > 0)
@@ -250,15 +254,21 @@ export const validationMetricDeltas = pgTable(
  * when their preference disagrees with their measurement, and so that a future model could
  * one day study how felt preference relates to measured optimum.
  */
-export const subjectivePreferences = pgTable("subjective_preferences", {
-  sessionId: uuid("session_id")
-    .primaryKey()
-    .references(() => testSessions.id, { onDelete: "cascade" }),
-  chosenCandidateId: uuid("chosen_candidate_id")
-    .notNull()
-    .references(() => calibrationCandidates.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const subjectivePreferences = pgTable(
+  "subjective_preferences",
+  {
+    sessionId: uuid("session_id")
+      .primaryKey()
+      .references(() => testSessions.id, { onDelete: "cascade" }),
+    chosenCandidateId: uuid("chosen_candidate_id")
+      .notNull()
+      .references(() => calibrationCandidates.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Deleting a session deletes its candidates, and each candidate cascades here. The primary
+  // key covers the session reference; the candidate reference had nothing.
+  (table) => [index("subjective_preferences_candidate_idx").on(table.chosenCandidateId)],
+);
 
 export type RecommendationRow = typeof recommendations.$inferSelect;
 export type RecommendationGameSettingRow = typeof recommendationGameSettings.$inferSelect;

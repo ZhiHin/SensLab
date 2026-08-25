@@ -137,6 +137,9 @@ export const guestSessions = pgTable(
     index("guest_sessions_expiry_idx")
       .on(table.expiresAt)
       .where(sql`${table.claimedByUserId} is null`),
+    // Deleting an account sets this null on every session that account claimed. The partial
+    // index above cannot serve that scan, because it excludes exactly the rows it touches.
+    index("guest_sessions_claimed_by_idx").on(table.claimedByUserId),
   ],
 );
 

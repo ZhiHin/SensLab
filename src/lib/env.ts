@@ -35,6 +35,23 @@ const envSchema = z.object({
   ABUSE_HASH_SALT: secret,
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+
+  /**
+   * How many reverse proxies sit in front of this application.
+   *
+   * `X-Forwarded-For` is a list that each hop **appends** to, so the entry a proxy added is at
+   * the right and everything to its left was supplied by whoever called it — including the
+   * client, who may write anything there. Reading the leftmost entry therefore takes the one
+   * value an attacker fully controls, which would let them vary it per request and slip past
+   * every per-IP rate limit in `auth-service` (`SENS-SEC-011`).
+   *
+   * The client address is the entry this many places from the right. `1` suits the usual
+   * single reverse proxy or load balancer; raise it if traffic passes through more hops you
+   * control, and set `0` only when the app is exposed directly and nothing rewrites the
+   * header. Getting it too high is the safe direction: it falls back to the leftmost entry
+   * rather than trusting a forged one.
+   */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

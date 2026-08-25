@@ -5,7 +5,7 @@ import type { ConfidenceParams } from "../params/confidence-model-v1";
 import type { ReferenceDistributionParams } from "../params/reference-dist-provisional-v1";
 import type { ScoringParameters } from "../scoring/contracts";
 import type { ObservedTrial } from "../scoring/standardise";
-import { cmPer360FromCounts } from "../sensitivity/canonical";
+import { cmPer360FromCounts, countsPer360FromCm } from "../sensitivity/canonical";
 import { settingsReliabilityForDpiSource } from "../sensitivity/dpi";
 import { median, medianAbsoluteDeviation, MAD_TO_SD } from "../statistics";
 import type { CalibrationVerdict, DpiSource, SettingsReliability } from "../types/vocabulary";
@@ -172,8 +172,26 @@ function clippedRanges(
 
 export function assembleRecommendation(inputs: AssembleInputs): Recommendation {
   const { calibration, params, dpi } = inputs;
-  const counts = calibration.countsPer360;
-  const cm = counts === null ? null : cmPer360FromCounts(counts, dpi);
+  // The recommendation is the **constrained** optimum (doc 13 §13.13): a sensitivity the
+  // player cannot physically execute is not a recommendation, it is a description of somebody
+  // else’s desk. `calibration.xStar` deliberately stays unclipped — it is the fitted optimum
+  // and doc 13 §13.11 persists it as evidence, which is also how "the unconstrained optimum is
+  // reported separately" stays available to the result screen.
+  //
+  // The engine already confines the search to the constraint (doc 13 §13.3) and refuses a peak
+  // whose vertex sits beyond the measured span, so what remains here is the narrow case of a
+  // vertex just inside the span but just above the ceiling.
+  const ceilingCm = calibration.constraint.maxCmPer360;
+  const fittedCm =
+    calibration.countsPer360 === null ? null : cmPer360FromCounts(calibration.countsPer360, dpi);
+  const cm =
+    fittedCm === null ? null : ceilingCm === null ? fittedCm : Math.min(fittedCm, ceilingCm);
+  const counts =
+    cm === null || fittedCm === null
+      ? null
+      : cm === fittedCm
+        ? calibration.countsPer360
+        : countsPer360FromCm(cm, dpi);
 
   const dimensions = withShape(
     computeDimensionScores({

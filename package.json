@@ -29,6 +29,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:roles": "tsx scripts/apply-roles.ts",
+    "sweep": "tsx scripts/sweep.ts",
     "db:studio": "drizzle-kit studio",
     "check:boundaries": "tsx scripts/check-boundaries.ts",
     "check:secrets": "tsx scripts/check-public-env.ts",
@@ -65,5 +66,10 @@
     "tsx": "^4.23.12",
     "typescript": "^5.9.0",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.12"
+    }
   }
 }

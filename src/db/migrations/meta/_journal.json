@@ -22,6 +22,13 @@
       "when": 1787402610727,
       "tag": "0002_drift_form_none",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787634672770,
+      "tag": "0003_foreign_key_indexes",
+      "breakpoints": true
     }
   ]
 }

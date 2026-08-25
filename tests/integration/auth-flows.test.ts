@@ -1,12 +1,16 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb } from "@/db/client";
+import { rateLimitCounters } from "@/db/schema";
+import { register, requestPasswordReset, signIn } from "@/services/auth-service";
 import { authRepo, rateLimitRepo, userRepo } from "@/repositories";
 import { asUser } from "@tests/helpers/db";
 import { db, resetVolatileTables } from "@tests/helpers/db";
 import { generateToken, hashToken } from "@/lib/crypto";
 import { hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { ARGON2ID_PREFIX } from "@/lib/password";
+
+const PASSWORD = "correct-horse-battery-staple";
 
 /**
  * Authentication flows against the real database (doc 23 §23.3).
@@ -364,5 +368,40 @@ describe("rate limiting — doc 23 §23.8", () => {
     const old = new Date(Date.now() - 86_400_000);
     await rateLimitRepo.consumeRateLimit("bucket:old", 5, 900, old);
     expect(await rateLimitRepo.purgeExpiredRateLimits(new Date(Date.now() - 3_600_000))).toBe(1);
+  });
+});
+
+describe("what the rate limiter writes down — doc 23 §23.4", () => {
+  beforeEach(async () => {
+    await resetVolatileTables();
+  });
+
+  it("never stores an email address or an IP in a bucket name", async () => {
+    // The counters outlive the request and sit outside the account model: nothing joins them
+    // to a user, so account deletion (`SENS-SEC-021`) does not reach them. A bucket named
+    // after an address would therefore be a permanent record of who tried to sign in and
+    // when, readable by anything with database access.
+    const email = "bucket-privacy@senslab.test";
+    const ip = "198.51.100.77";
+
+    await register({ email, password: PASSWORD }, { ip });
+    await signIn({ email, password: "wrong-password-entirely" }, { ip }).catch(() => null);
+    await requestPasswordReset({ email }, { ip }).catch(() => null);
+
+    const rows = await db().select({ bucket: rateLimitCounters.bucket }).from(rateLimitCounters);
+    expect(rows.length).toBeGreaterThan(0);
+
+    const buckets = rows.map((row) => row.bucket);
+    for (const bucket of buckets) {
+      expect(bucket, `bucket "${bucket}" contains the email address`).not.toContain(email);
+      expect(bucket, `bucket "${bucket}" contains the raw IP`).not.toContain(ip);
+      // Local part alone would be just as identifying.
+      expect(bucket).not.toContain("bucket-privacy");
+    }
+
+    // Still a working limiter: the prefix says which one, and the same input lands in the
+    // same bucket.
+    expect(buckets.some((bucket) => bucket.startsWith("signin-account:"))).toBe(true);
+    expect(buckets.some((bucket) => bucket.startsWith("register:"))).toBe(true);
   });
 });

@@ -153,6 +153,48 @@ describe("assembling a peak_found recommendation", () => {
     expect(below.ranges.highPerformance?.highCm360).toBeCloseTo(hp.highCm360, 9);
   });
 
+  it("recommends a sensitivity the player can physically reach — doc 13 §13.13", () => {
+    // "The recommendation is the constrained optimum, and the unconstrained optimum is
+    // reported separately." A number above the ceiling describes somebody else’s desk.
+    //
+    // The engine confines the search to the constraint and refuses a peak whose vertex sits
+    // beyond the measured span, so the case that reaches here is narrow: a vertex just inside
+    // the span and just above the ceiling. It is still a number the player would be told to
+    // type into a game and could not execute.
+    const free = recommendation.canonical.recommendedCmPer360;
+    expect(free).not.toBeNull();
+    if (free === null) return;
+
+    const ceiling = free * 0.98;
+    const clipped = assembleRecommendation(
+      inputsFor({
+        ...calibration,
+        constraint: { maxCmPer360: ceiling, source: "pad_width", conflict: false },
+      }),
+    );
+
+    expect(clipped.canonical.recommendedCmPer360).not.toBeNull();
+    expect(clipped.canonical.recommendedCmPer360 as number).toBeLessThanOrEqual(ceiling + 1e-9);
+    expect(clipped.canonical.recommendedCountsPer360).not.toBeNull();
+    // Counts and centimetres must keep describing the same sensitivity after the clip.
+    expect(clipped.canonical.degreesPerCm as number).toBeCloseTo(
+      360 / (clipped.canonical.recommendedCmPer360 as number),
+      9,
+    );
+
+    // A ceiling above the fitted optimum changes nothing.
+    const loose = assembleRecommendation(
+      inputsFor({
+        ...calibration,
+        constraint: { maxCmPer360: free * 1.5, source: "pad_width", conflict: false },
+      }),
+    );
+    expect(loose.canonical.recommendedCmPer360).toBeCloseTo(free, 9);
+    expect(loose.canonical.recommendedCountsPer360).toBe(
+      recommendation.canonical.recommendedCountsPer360,
+    );
+  });
+
   it("builds a response curve that redraws without the fit", () => {
     const curve = recommendation.evidence.responseCurve;
     expect(curve.candidates.length).toBe(calibration.estimates.length);

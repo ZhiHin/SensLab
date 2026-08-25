@@ -363,3 +363,58 @@ describe("support views", () => {
     expect(rows[0]?.browser).toBe("chrome");
   });
 });
+
+describe("indexes that deletes depend on", () => {
+  afterAll(async () => {
+    await closeDb();
+  });
+
+  it("gives every cascading foreign key an index to delete through", async () => {
+    // Postgres enforces `on delete cascade` and `on delete set null` by running a query
+    // against the *child* table once per parent row removed. Without an index on the
+    // referencing column that query is a sequential scan, so deleting one account or expiring
+    // one session scans whole tables — and the two operations that do this in bulk are the
+    // ones that must not be slow: account deletion (`SENS-SEC-021`) and the retention sweep
+    // (`SENS-BR-003`).
+    //
+    // Nothing in application code can catch this; it is a property of the schema, and it is
+    // invisible until the tables are large, which is the worst time to discover it.
+    const rows = await db().execute<{
+      child: string;
+      column_name: string;
+      parent: string;
+      on_delete: string;
+    }>(sql`
+      select c.conrelid::regclass::text as child,
+             a.attname                  as column_name,
+             c.confrelid::regclass::text as parent,
+             case c.confdeltype when 'c' then 'cascade' else 'set null' end as on_delete
+      from pg_constraint c
+      join lateral unnest(c.conkey) with ordinality k(attnum, ord) on true
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
+      where c.contype = 'f'
+        and k.ord = 1
+        and c.confdeltype in ('c', 'n')
+        and not exists (
+          select 1 from pg_index i
+          where i.indrelid = c.conrelid and i.indkey[0] = k.attnum
+        )
+      order by 1, 2
+    `);
+
+    // `game_versions` is seeded reference data: rows are inserted by the seed and never
+    // deleted, so the cascade cannot fire and an index would only cost writes. Every other
+    // parent here is user data with a real delete path.
+    const allowed = new Set(["game_versions"]);
+    const offenders = rows
+      .filter((row) => !allowed.has(row.parent))
+      .map(
+        (row) => `${row.child}.${row.column_name} -> ${row.parent} (on delete ${row.on_delete})`,
+      );
+
+    expect(
+      offenders,
+      "these deletes will sequentially scan the child table; add an index on the referencing column",
+    ).toEqual([]);
+  });
+});

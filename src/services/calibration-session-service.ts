@@ -1,6 +1,6 @@
 import "server-only";
 import { bracketOf, toLogSensitivity, type SearchBracket } from "@/core/calibration";
-import { CALIBRATION_MODEL_V2, CURRENT_VERSIONS } from "@/core/params";
+import { CALIBRATION_MODEL_V3, CURRENT_VERSIONS } from "@/core/params";
 import {
   countsPer360FromCm,
   cmPer360FromCounts,
@@ -99,7 +99,7 @@ function maxImpliedCountsPerSecond(dpi: number): number {
 }
 
 function roundBudget(mode: SessionMode): number {
-  const budget = CALIBRATION_MODEL_V2.params.roundBudget;
+  const budget = CALIBRATION_MODEL_V3.params.roundBudget;
   return mode === "advanced" ? budget.advanced : mode === "quick" ? budget.quick : budget.standard;
 }
 

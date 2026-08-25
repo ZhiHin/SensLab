@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { AIM_PROFILE_RULES_V1 } from "@/core/params/aim-profile-rules-v1";
-import { CALIBRATION_MODEL_V2 } from "@/core/params/calibration-model-v2";
+import { CALIBRATION_MODEL_V3 } from "@/core/params/calibration-model-v3";
 import { METRIC_DEFINITIONS } from "@/core/metrics/registry";
 import { TEST_KEYS } from "@/core/types/vocabulary";
 import type { TestCategory, TestKey } from "@/core/types/vocabulary";
@@ -171,7 +171,7 @@ export async function seedAimProfiles(db: Database): Promise<number> {
  * planner and the ingest validator need in order to know how many trials a round should have.
  */
 export async function seedTestDefinitions(db: Database): Promise<number> {
-  const minimums = CALIBRATION_MODEL_V2.params.minimumValidTrials;
+  const minimums = CALIBRATION_MODEL_V3.params.minimumValidTrials;
 
   for (const key of TEST_KEYS) {
     // The MVP floors are part of the released calibration parameter set (`SENS-BR-029`);

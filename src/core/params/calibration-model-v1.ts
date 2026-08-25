@@ -67,6 +67,26 @@ export interface CalibrationParams {
     readonly significanceLevel: number;
     readonly bootstrapResamples: number;
     readonly credibleIntervalLevel: number;
+    /**
+     * Whether a `peak_found` verdict additionally requires the **curvature** to be
+     * significant: the bootstrap interval on the quadratic term `b₂` must exclude zero at
+     * `significanceLevel`.
+     *
+     * Absent in `calibration_model_v1` and `v2`, where a peak rested on some candidate
+     * *pair* separating (doc 13 §13.9) together with a concave point fit. That pair test is the
+     * right rule for whether to keep searching (§13.10 condition 3) and the wrong one for
+     * claiming a peak: across nine candidates it is an OR over thirty-six comparisons with no
+     * multiplicity control, so a flat response clears it far more often than the level implies.
+     *
+     * Set from `calibration_model_v3`, where the verdict is tested by §13.9’s own rule at
+     * §13.9’s own level, applied to the quantity a peak actually asserts — that the response
+     * bends. Measured effect on 100 simulated flat players: fabricated peaks fell from 27% to
+     * 11%, with real-peak detection and accuracy unchanged (100/100, median error 0.042 log2).
+     *
+     * It is a released parameter rather than a code-level change so that a session stored under
+     * v1 or v2 still re-derives its original verdict (`SENS-BR-029`, `SENS-BR-030`).
+     */
+    readonly requireSignificantCurvature?: boolean;
   };
 
   /** Drift/nuisance model (doc 13 §13.7). */
