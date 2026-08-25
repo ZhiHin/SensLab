@@ -38,6 +38,7 @@ async function main(): Promise<void> {
   const { startCalibrationSession, submitCalibrationRound, abandonCalibrationSession } =
     await import("../src/services/calibration-session-service");
   const { createProfile, listProfiles } = await import("../src/services/hardware-service");
+  const { userRepo: repo } = await import("../src/repositories");
   const { startValidation, submitValidation, validationOfferFor } =
     await import("../src/services/validation-service");
 
@@ -56,6 +57,16 @@ async function main(): Promise<void> {
         })
       ).userId;
     const actor = asUser(userId);
+
+    // Display preferences back to the defaults. The browser suite changes them and asserts on
+    // the result, and a control left switched by a previous run makes the next run's click a
+    // no-op — which fails as "the preference did not save" and sends the reader hunting in
+    // entirely the wrong place.
+    await repo.updatePreferences(actor, {
+      locale: "en",
+      unitPreference: "metric",
+      motionPreference: "system",
+    });
 
     // A saved hardware profile, so the history and profile screens have something real to
     // show and every fixture session is attributed to the same setup (FR-095).

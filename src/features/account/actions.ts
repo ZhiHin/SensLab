@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { LOCALES } from "@/core/preferences";
+import { MOTION_PREFERENCES, UNIT_PREFERENCES } from "@/core/types/vocabulary";
 import { toAppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import {
@@ -13,6 +15,7 @@ import {
   type DeletionSchedule,
   type ExportResult,
 } from "@/services/account-service";
+import { setPreferences, type Preferences } from "@/services/preferences-service";
 import { getActor } from "@/services/session-context";
 
 /**
@@ -83,5 +86,34 @@ export async function cancelDeletionAction(): Promise<ActionResult<null>> {
     await cancelAccountDeletion(await getActor());
     revalidatePath("/settings");
     return null;
+  });
+}
+
+/* ------------------------------------------------------------------ display preferences */
+
+const preferencesSchema = z.object({
+  locale: z.enum(LOCALES).optional(),
+  unit: z.enum(UNIT_PREFERENCES).optional(),
+  motion: z.enum(MOTION_PREFERENCES).optional(),
+});
+
+/**
+ * Saves a display preference (FR-103).
+ *
+ * Available to guests as well as accounts: a preference about how a number is *shown* needs no
+ * identity, and requiring one to switch to inches would be a sign-up wall around a label.
+ */
+export async function setPreferencesAction(input: unknown): Promise<ActionResult<Preferences>> {
+  return run("setPreferences", async () => {
+    const payload = preferencesSchema.parse(input);
+    // Only the keys the caller actually sent: `exactOptionalPropertyTypes` treats an explicit
+    // `undefined` as a value, and "leave this alone" must not read as "clear this".
+    const update = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined),
+    );
+    // No `revalidatePath` here: invalidating the layout re-renders the settings page on the
+    // action's response, which remounts the control and discards the confirmation the user is
+    // meant to read. Every surface reads the preference when it is next requested.
+    return setPreferences(await getActor(), update);
   });
 }

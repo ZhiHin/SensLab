@@ -135,74 +135,93 @@ body {
 
 /* ==========================================================================
    Typography scale (doc 26 §26.4)
+
+   Declared in the `components` layer so a utility can override one property of
+   a type style without restating the rest. Outside a layer these single-class
+   rules beat every Tailwind utility on source order alone, which made
+   `type-label text-text-1` silently render as `text-3` — the label style won
+   the colour it should never have been deciding.
    ========================================================================== */
 
-.type-display-xl {
-  font-family: var(--font-display);
-  font-size: clamp(64px, 11vw, 112px);
-  line-height: 0.92;
-  letter-spacing: -0.03em;
-  font-weight: 500;
-}
+@layer components {
+  .type-display-xl {
+    font-family: var(--font-display);
+    font-size: clamp(64px, 11vw, 112px);
+    line-height: 0.92;
+    letter-spacing: -0.03em;
+    font-weight: 500;
+  }
 
-.type-display-l {
-  font-family: var(--font-display);
-  font-size: clamp(40px, 7vw, 72px);
-  line-height: 0.95;
-  letter-spacing: -0.02em;
-  font-weight: 500;
-}
+  .type-display-l {
+    font-family: var(--font-display);
+    font-size: clamp(40px, 7vw, 72px);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    font-weight: 500;
+  }
 
-.type-display-m {
-  font-family: var(--font-display);
-  font-size: clamp(28px, 4vw, 44px);
-  line-height: 1.05;
-  letter-spacing: -0.015em;
-  font-weight: 500;
-}
+  .type-display-m {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    font-weight: 500;
+  }
 
-.type-title {
-  font-family: var(--font-display);
-  font-size: 28px;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
+  /* Screen titles. Between `display-m` and `title` on doc 26 §26.4's scale: the screens
+     that use it are working surfaces rather than marketing, and a 44px heading over a data
+     table shouts. */
+  .type-display-s {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 3vw, 32px);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    font-weight: 500;
+  }
 
-.type-body-s {
-  font-size: 14px;
-  line-height: 1.5;
-}
+  .type-title {
+    font-family: var(--font-display);
+    font-size: 28px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
 
-/* The most characteristic type style in the product: an uppercase micro-label
+  .type-body-s {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* The most characteristic type style in the product: an uppercase micro-label
    marks every measured quantity (SENS-UX-009). */
-.type-label {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 1.3;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-3);
-}
+  .type-label {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.3;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-3);
+  }
 
-.type-data-l {
-  font-family: var(--font-mono);
-  font-size: 32px;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
+  .type-data-l {
+    font-family: var(--font-mono);
+    font-size: 32px;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
 
-.type-data-m {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  line-height: 1.3;
-  font-variant-numeric: tabular-nums;
-}
+  .type-data-m {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
 
-.type-data-s {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.4;
-  font-variant-numeric: tabular-nums;
+  .type-data-s {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* ==========================================================================

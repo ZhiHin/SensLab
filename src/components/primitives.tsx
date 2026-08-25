@@ -167,11 +167,20 @@ const TONE_STYLES: Readonly<Record<StatusTone, string>> = {
  *
  * Carries a glyph *and* a word, never colour alone (`SENS-UX-005`, `SENS-UX-029`).
  */
-export function StatusPill({ tone, children }: { tone: StatusTone; children: ReactNode }) {
+export function StatusPill({
+  tone,
+  status,
+  children,
+}: {
+  tone: StatusTone;
+  /** The state being reported, when it is narrower than the tone. Defaults to the tone. */
+  status?: string;
+  children: ReactNode;
+}) {
   const glyph = tone === "verified" ? "✓" : tone === "neutral" ? "·" : "!";
   return (
     <span
-      data-status={tone}
+      data-status={status ?? tone}
       className={cx(
         "type-label inline-flex items-center gap-1.5 border px-2 py-1",
         "rounded-[var(--radius-xs)] bg-transparent",

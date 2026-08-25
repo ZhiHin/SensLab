@@ -51,9 +51,10 @@ export interface CalibrationSurfaceProps {
   readonly games: readonly { readonly gameId: string; readonly displayName: string }[];
   /** Saved profiles for a signed-in user; empty for a guest. */
   readonly profiles: readonly HardwareProfileOption[];
+  readonly estimatedMinutes: Readonly<Record<"quick" | "standard" | "advanced", number>>;
 }
 
-export function CalibrationSurface({ games, profiles }: CalibrationSurfaceProps) {
+export function CalibrationSurface({ games, profiles, estimatedMinutes }: CalibrationSurfaceProps) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>({ kind: "setup" });
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +205,7 @@ export function CalibrationSurface({ games, profiles }: CalibrationSurfaceProps)
         <CalibrationForm
           games={games}
           profiles={profiles}
+          estimatedMinutes={estimatedMinutes}
           busy={phase.kind === "starting"}
           error={error}
           onSubmit={(form) => void begin(form)}

@@ -28,7 +28,7 @@ test.describe("the verification table", () => {
 
   test("is reachable from the front page", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: /what has been measured/i }).click();
+    await page.getByRole("link", { name: /game verification/i }).click();
     await expect(page).toHaveURL(/\/games$/);
   });
 });

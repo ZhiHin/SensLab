@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Callout, Panel } from "@/components/primitives";
 import type { AccountView } from "@/services/account-service";
-import { cancelDeletionAction, exportAccountAction, requestDeletionAction } from "./actions";
+import type { Preferences } from "@/services/preferences-service";
+import {
+  cancelDeletionAction,
+  exportAccountAction,
+  requestDeletionAction,
+  setPreferencesAction,
+} from "./actions";
 
 /**
  * SCR-045 — Settings: export and deletion (doc 24, FR-098, `SENS-SEC-020`, `SENS-SEC-021`).
@@ -24,18 +30,91 @@ import { cancelDeletionAction, exportAccountAction, requestDeletionAction } from
  * told for reassurance.
  */
 
+/** A labelled group of mutually exclusive choices, as squares rather than a rounded switch. */
+function ChoiceRow<T extends string>({
+  label,
+  hint,
+  value,
+  options,
+  disabled,
+  onChange,
+  testId,
+}: {
+  readonly label: string;
+  readonly hint: string;
+  readonly value: T;
+  readonly options: readonly { readonly value: T; readonly label: string }[];
+  readonly disabled: boolean;
+  readonly onChange: (value: T) => void;
+  readonly testId: string;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2" data-testid={testId}>
+      <legend className="type-label">{label}</legend>
+      <span className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-center gap-2 border px-4 py-2 type-label data-[on=true]:border-text-1 data-[on=false]:border-hairline"
+            data-on={value === option.value}
+          >
+            <input
+              type="radio"
+              name={testId}
+              value={option.value}
+              checked={value === option.value}
+              disabled={disabled}
+              onChange={() => onChange(option.value)}
+              data-testid={`${testId}-${option.value}`}
+            />
+            {option.label}
+          </label>
+        ))}
+      </span>
+      <span className="max-w-[62ch] text-xs text-text-3">{hint}</span>
+    </fieldset>
+  );
+}
+
 export function SettingsView({
   account,
   deletionWindowDays,
+  preferences,
 }: {
   readonly account: AccountView;
   readonly deletionWindowDays: number;
+  readonly preferences: Preferences;
 }) {
   const router = useRouter();
+  const [prefs, setPrefs] = useState<Preferences>(preferences);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [password, setPassword] = useState("");
   const [pending, startTransition] = useTransition();
+
+  const savePreference = (update: Partial<Preferences>) => {
+    setError(null);
+    setSaved(false);
+    const optimistic = { ...prefs, ...update };
+    setPrefs(optimistic);
+    startTransition(async () => {
+      const result = await setPreferencesAction(update);
+      if (result.ok) {
+        // The control is optimistic, so the confirmation is what tells the user the change
+        // actually reached the server — and it is what a test can wait on rather than
+        // guessing at a duration.
+        //
+        // No `router.refresh()`: refreshing re-renders this page from the server and discards
+        // the confirmation the user is meant to read. Every other surface reads the preference
+        // when it is next requested, which is the only place the change has anything to do.
+        setSaved(true);
+      } else {
+        setPrefs(prefs);
+        setError(result.message);
+      }
+    });
+  };
 
   const download = () => {
     setError(null);
@@ -113,6 +192,51 @@ export function SettingsView({
         </Callout>
       )}
 
+      <Panel title="Display">
+        <div className="flex flex-col gap-6">
+          <p className="type-label text-text-3" aria-live="polite" data-testid="preferences-status">
+            {pending ? "Saving…" : saved ? "Saved" : ""}
+          </p>
+          <ChoiceRow
+            label="Units"
+            hint="Changes how distances are shown and nothing else. Your result is measured in counts; centimetres and inches are two ways of reading the same measurement."
+            value={prefs.unit}
+            disabled={pending}
+            onChange={(unit) => savePreference({ unit })}
+            testId="unit-preference"
+            options={[
+              { value: "metric", label: "Centimetres" },
+              { value: "imperial", label: "Inches" },
+            ]}
+          />
+          <ChoiceRow
+            label="Motion"
+            hint="“System” follows your operating system. Choose “Reduced” for less movement everywhere, or “Full” to keep SensLab's transitions even when your system asks for less."
+            value={prefs.motion}
+            disabled={pending}
+            onChange={(motion) => savePreference({ motion })}
+            testId="motion-preference"
+            options={[
+              { value: "system", label: "System" },
+              { value: "reduced", label: "Reduced" },
+              { value: "full", label: "Full" },
+            ]}
+          />
+          <ChoiceRow
+            label="Language"
+            hint="Game settings and game names always come from the game itself, so they stay in the language that game uses."
+            value={prefs.locale}
+            disabled={pending}
+            onChange={(locale) => savePreference({ locale })}
+            testId="locale-preference"
+            options={[
+              { value: "en", label: "English" },
+              { value: "zh-Hans", label: "简体中文" },
+            ]}
+          />
+        </div>
+      </Panel>
+
       <Panel title="Your data">
         <p className="mb-4 max-w-[64ch] text-sm text-text-2">
           Everything this account owns, as one JSON file: your profile, your hardware setups, every
@@ -183,11 +307,6 @@ export function SettingsView({
           </button>
         )}
       </Panel>
-
-      <p className="text-xs text-text-3">
-        Units, motion preference, locale and research-consent controls arrive with the settings work
-        in Phase 10; the values behind them are already stored per account.
-      </p>
     </main>
   );
 }

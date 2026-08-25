@@ -268,3 +268,28 @@ export async function purgeScheduledDeletions(now: Date, tx?: Executor): Promise
     .returning({ id: users.id });
   return rows.length;
 }
+
+export interface PreferenceUpdate {
+  readonly locale: string;
+  readonly unitPreference: "metric" | "imperial";
+  readonly motionPreference: "system" | "reduced" | "full";
+}
+
+/** Display preferences (FR-103). Presentation only — no measurement reads these. */
+export async function updatePreferences(
+  actor: Actor,
+  update: PreferenceUpdate,
+  tx?: Executor,
+): Promise<void> {
+  const { userId } = requireUser(actor);
+  const db = executor(tx);
+  await db
+    .update(userProfiles)
+    .set({
+      locale: update.locale,
+      unitPreference: update.unitPreference,
+      motionPreference: update.motionPreference,
+      updatedAt: new Date(),
+    })
+    .where(eq(userProfiles.userId, userId));
+}

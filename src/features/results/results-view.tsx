@@ -5,6 +5,8 @@ import { AIM_PROFILE_RULES_V1 } from "@/core/params";
 import type { DimensionKey } from "@/core/types/vocabulary";
 import type { RecommendationView } from "@/services/recommendation-service";
 import type { ValidationOffer } from "@/core/validation";
+import { formatDistance, per360Label } from "@/core/preferences";
+import type { UnitPreference } from "@/core/types/vocabulary";
 import { AimDna } from "./aim-dna";
 import { ConfidenceBreakdown } from "./confidence-breakdown";
 import { CopyButton } from "./copy-button";
@@ -38,6 +40,12 @@ function relativeStatement(view: RecommendationView): string | null {
 export interface ResultsViewProps {
   readonly view: RecommendationView;
   /**
+   * How distances are displayed (FR-103). Presentation only: the stored value, the ranges and
+   * every comparison are in centimetres derived from counts, and switching to inches changes
+   * the label rather than the measurement.
+   */
+  readonly unit: UnitPreference;
+  /**
    * Whether a validation is offered, and why not when it is not (doc 17 §17.2). Resolved on
    * the server so the page can state the reason rather than hiding the control.
    */
@@ -60,7 +68,11 @@ const VALIDATION_HEADLINE: Readonly<Record<ValidationOutcomeSummary["verdict"], 
   worse: "Validated — your original performed better",
 };
 
-export function ResultsView({ view, validation }: ResultsViewProps) {
+export function ResultsView({ view, validation, unit }: ResultsViewProps) {
+  const distance = (cm: number) =>
+    formatDistance(cm, unit).value.toFixed(unit === "imperial" ? 2 : 1);
+  const range = (low: number, high: number) => `${distance(low)} — ${distance(high)}`;
+  const perTurn = per360Label(unit);
   const profileParams = AIM_PROFILE_RULES_V1.params;
   const dimensions = view.profile.dimensions.map((d) => ({
     dimension: d.dimension as DimensionKey,
@@ -110,26 +122,26 @@ export function ResultsView({ view, validation }: ResultsViewProps) {
             <p className="type-label">Your true sens</p>
             <p className="flex items-baseline gap-3">
               <span className="type-display-l text-result" data-testid="recommended-cm">
-                {fmt(view.canonical.cmPer360)}
+                {distance(view.canonical.cmPer360)}
               </span>
-              <span className="type-label text-text-3">cm / 360°</span>
+              <span className="type-label text-text-3">{perTurn}</span>
               <span className="ml-4 type-data-s text-text-3">
                 = {Math.round(view.canonical.countsPer360 ?? 0).toLocaleString()} counts / 360°
               </span>
             </p>
           </div>
-          <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {view.ranges.highPerformance !== null && (
               <Readout
                 label="High-performance range"
-                value={`${fmt(view.ranges.highPerformance.low)} — ${fmt(view.ranges.highPerformance.high)}`}
-                unit="cm/360"
+                value={range(view.ranges.highPerformance.low, view.ranges.highPerformance.high)}
+                unit={perTurn}
               />
             )}
             <Readout
               label="Comfort range"
-              value={`${fmt(view.ranges.comfort.low)} — ${fmt(view.ranges.comfort.high)}`}
-              unit="cm/360"
+              value={range(view.ranges.comfort.low, view.ranges.comfort.high)}
+              unit={perTurn}
             />
             {view.confidence !== null && (
               <Readout
@@ -141,7 +153,7 @@ export function ResultsView({ view, validation }: ResultsViewProps) {
             {profileName !== null && (
               <Readout label="Aim profile" value={profileName.toUpperCase()} />
             )}
-          </dl>
+          </div>
           {relativeStatement(view) !== null && (
             <p className="max-w-[60ch] text-text-2" data-testid="relative-statement">
               {relativeStatement(view)}
@@ -163,12 +175,12 @@ export function ResultsView({ view, validation }: ResultsViewProps) {
             <p className="type-label">No single sensitivity won</p>
             <p className="flex items-baseline gap-3">
               <span className="type-display-l text-accent" data-testid="comfort-range">
-                {fmt(view.ranges.comfort.low)} — {fmt(view.ranges.comfort.high)}
+                {range(view.ranges.comfort.low, view.ranges.comfort.high)}
               </span>
-              <span className="type-label text-text-3">cm / 360° · your comfort range</span>
+              <span className="type-label text-text-3">{perTurn} · your comfort range</span>
             </p>
           </div>
-          <dl className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             {view.confidence !== null && (
               <Readout
                 label="Confidence index"
@@ -179,7 +191,7 @@ export function ResultsView({ view, validation }: ResultsViewProps) {
             {profileName !== null && (
               <Readout label="Aim profile" value={profileName.toUpperCase()} />
             )}
-          </dl>
+          </div>
           <p className="max-w-[64ch] text-text-2">
             Across everything we measured, no sensitivity in this range clearly outperformed the
             others for you. Your trial-to-trial variance was larger than the difference between

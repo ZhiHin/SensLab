@@ -13,7 +13,7 @@ best, and translates the result into settings for the games they play.
 
 ## Status
 
-**Phase 9 — Accounts, History and Hardware Profiles.** The project follows a phased plan defined in
+**Phase 10 — UI/UX Polish and Responsive Experience.** The project follows a phased plan defined in
 [`docs/phase-0/`](docs/phase-0/). What exists today is the foundation — architecture, database,
 authentication, the pure-domain maths, CI — the engine that runs an aim session, all thirteen
 aim tests doc 09 specifies with every metric doc 10 defines, the statistical engine that turns
@@ -28,6 +28,13 @@ refinement inside the uncertainty around the recommendation.
 **The calibration is deterministic statistics, not AI** (`SENS-BR-002`). It is a noisy
 one-dimensional derivative-free search with a drift model, and it **refuses to invent a peak**:
 a flat or indistinguishable response returns a range and says why (`SENS-BR-017`).
+
+**It looks like an instrument, and it is honest about where it cannot run.** The register is a
+calibration laboratory — near-black, hairline structure, uppercase micro-labels, tabular
+numerals, exactly two accent hues, no card grid. Calibration is offered only where the
+measurement can be honest: the gate is capability-based (fine pointer, hover, viewport, Pointer
+Lock), so a tablet with a mouse passes and a phone is told plainly why it cannot, with every
+reading surface still working on it (`SENS-BR-023`, FR-100).
 
 **Results accumulate into a history that refuses to flatter you.** Sessions are attributed to
 a hardware profile, and a comparison between two of them calls a change meaningful only when
@@ -67,20 +74,20 @@ settings surface are built and tested against fictional fixtures. No real game c
 converted, because no entry in the verification register has been closed — and the code is
 now built so that a constant **cannot** be shipped without closing one (`SENS-BR-013`).
 
-| Phase | Scope                                          | State                                                              |
-| ----- | ---------------------------------------------- | ------------------------------------------------------------------ |
-| 0     | Product and engineering specification          | Complete — [`docs/phase-0/`](docs/phase-0/)                        |
-| 1     | Application foundation                         | Complete — [report](docs/implementation/phase-1-completion.md)     |
-| 2     | Aim test engine (Canvas, pointer lock, timing) | Complete — [report](docs/implementation/phase-2-completion.md)     |
-| 3     | The MVP aim tests and their metrics            | Complete — [report](docs/implementation/phase-3-completion.md)     |
-| 4     | Calibration and statistical engine             | Complete — [report](docs/implementation/phase-4-completion.md)     |
-| 5     | Verified game adapters                         | Complete — [report](docs/implementation/phase-5-completion.md)     |
-| 6     | Advanced aim tests                             | Complete — [report](docs/implementation/phase-6-completion.md)     |
-| 7     | Results and Aim DNA                            | Complete — [report](docs/implementation/phase-7-completion.md)     |
-| 8     | Validation and fine-tuning                     | Complete — [report](docs/implementation/phase-8-completion.md)     |
-| **9** | **Accounts, history, hardware profiles**       | **Complete** — [report](docs/implementation/phase-9-completion.md) |
-| 10    | UI/UX polish and the landing experience        | Not started                                                        |
-| 11    | Hardening and release readiness                | Not started                                                        |
+| Phase  | Scope                                          | State                                                               |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------------- |
+| 0      | Product and engineering specification          | Complete — [`docs/phase-0/`](docs/phase-0/)                         |
+| 1      | Application foundation                         | Complete — [report](docs/implementation/phase-1-completion.md)      |
+| 2      | Aim test engine (Canvas, pointer lock, timing) | Complete — [report](docs/implementation/phase-2-completion.md)      |
+| 3      | The MVP aim tests and their metrics            | Complete — [report](docs/implementation/phase-3-completion.md)      |
+| 4      | Calibration and statistical engine             | Complete — [report](docs/implementation/phase-4-completion.md)      |
+| 5      | Verified game adapters                         | Complete — [report](docs/implementation/phase-5-completion.md)      |
+| 6      | Advanced aim tests                             | Complete — [report](docs/implementation/phase-6-completion.md)      |
+| 7      | Results and Aim DNA                            | Complete — [report](docs/implementation/phase-7-completion.md)      |
+| 8      | Validation and fine-tuning                     | Complete — [report](docs/implementation/phase-8-completion.md)      |
+| 9      | Accounts, history, hardware profiles           | Complete — [report](docs/implementation/phase-9-completion.md)      |
+| **10** | **UI/UX polish and the landing experience**    | **Complete** — [report](docs/implementation/phase-10-completion.md) |
+| 11     | Hardening and release readiness                | Not started                                                         |
 
 **There are no verified game conversions yet.** All five launch adapters are registered as
 unverified and refuse to emit a number — see [Game verification](#game-verification).
@@ -306,7 +313,7 @@ no surface can opt out. `/games` publishes the whole register.
 | Unit         | Vitest                   | `core/`, `game-adapters/` and `test-engine/`. Gated at 90% branch coverage |
 | Architecture | Vitest                   | Module boundaries, determinism, secret hygiene                             |
 | Integration  | Vitest + real PostgreSQL | Ownership, constraints, triggers, ingest idempotency, auth                 |
-| E2E          | Playwright               | Shell, auth, headers, health, the harness, results, validation, accounts   |
+| E2E          | Playwright               | Every screen, plus an axe scan, a responsive audit and the touch gate      |
 
 Playwright serves the production build on port 3000 by default. If another app holds that port,
 set `PLAYWRIGHT_PROD_PORT` (and `PLAYWRIGHT_DEV_PORT` for the `lab` project) — the config will
@@ -320,6 +327,12 @@ then writes the ids to `test-results/e2e-fixtures.json`. The fixture account als
 hardware profile, so the history and profile screens have something real to render. The seed is **searched, not pinned**:
 a verdict is a property of the data, so a change to the player or a parameter set would break
 a pinned seed with a mystifying error. The database must be up for `npm run test:e2e`.
+
+**Accessibility runs every time.** An axe scan (WCAG 2.1 A and AA) covers every page and every
+result state, alongside keyboard, landmark, focus-indicator and canvas-description checks, and
+a responsive pass asserts no surface scrolls the page sideways at any breakpoint. Doc 28 is
+explicit that automated tooling catches perhaps half of what matters; the manual passes it
+schedules are still scheduled.
 
 Sign-in is rate limited per IP and per account (`SENS-SEC-011`). The suite signs in **once**,
 in a `setup` project, and every spec that needs the account reuses that storage state; specs

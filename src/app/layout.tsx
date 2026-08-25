@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { intlLocale } from "@/core/preferences";
+import { getPreferences } from "@/services/preferences-service";
+import { getActor } from "@/services/session-context";
 import "./globals.css";
 
 /**
@@ -49,10 +52,16 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Resolved once, here, so `lang` and the motion override are correct in the first paint
+  // rather than corrected after hydration — a language announced wrongly to a screen reader
+  // for one frame is a language announced wrongly (doc 28 §28.10).
+  const preferences = await getPreferences(await getActor());
+
   return (
     <html
-      lang="en"
+      lang={intlLocale(preferences.locale)}
+      data-motion={preferences.motion}
       className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
       <body>

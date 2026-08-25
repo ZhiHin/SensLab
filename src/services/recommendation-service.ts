@@ -70,6 +70,28 @@ export function readHardwareSnapshot(
   };
 }
 
+/**
+ * How long a session of this mode takes, in minutes (`SENS-BR-024`).
+ *
+ * **Derived, never written down.** The claim on the landing page is a promise about the
+ * product's own configuration, so it is computed from the trial budget: change the roster,
+ * the candidate count or the round budget and the number a visitor reads changes with it. A
+ * hardcoded "~20 min" would become a lie the first time the budget moved, and nothing would
+ * fail.
+ *
+ * `SECONDS_PER_TRIAL` is the same per-trial estimate the between-round interstitial uses
+ * (`estimatedRoundSeconds`); `OVERHEAD_MINUTES` covers setup, the briefings, practice and the
+ * pauses between blocks. Both are estimates of *time spent*, not of anything measured, and
+ * are stated as an approximation wherever they are shown.
+ */
+const SECONDS_PER_TRIAL = 3;
+const OVERHEAD_MINUTES = 4;
+
+export function estimatedSessionMinutes(mode: SessionMode): number {
+  const trials = targetTrialsForMode(mode);
+  return Math.round((trials * SECONDS_PER_TRIAL) / 60 + OVERHEAD_MINUTES);
+}
+
 /** The per-mode target: the scored roster's standard trial counts × candidates × rounds. */
 export function targetTrialsForMode(mode: SessionMode): number {
   if (mode === "fine_tune") {

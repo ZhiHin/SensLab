@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { prefersReducedMotion } from "@/lib/motion";
 
 /**
  * SCR-030 — "Analyzing your aim" (doc 25 §25.7, `SENS-UX-021`).
@@ -25,11 +26,7 @@ export const STAGE_HOLD_MS = 320;
 export function AnalysisStage({ trials, onDone }: { trials: number; onDone: () => void }) {
   // Under reduced motion every stage is shown at once; the initial state reads the preference
   // rather than an effect setting it, which would be a render-in-effect.
-  const [done, setDone] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? STAGES.length
-      : 0,
-  );
+  const [done, setDone] = useState(() => (prefersReducedMotion() ? STAGES.length : 0));
 
   useEffect(() => {
     if (done >= STAGES.length) {

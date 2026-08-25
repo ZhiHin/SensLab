@@ -1,5 +1,6 @@
 "use client";
 
+import { copyFor } from "@/features/test-run/copy";
 import type { useAimEngine } from "@/test-engine/mount";
 
 /**
@@ -15,6 +16,14 @@ import type { useAimEngine } from "@/test-engine/mount";
  * indistinguishable in the data from a frame lost to the player's machine.
  *
  * Nothing on this layer names a candidate, a score or a sensitivity (`SENS-BR-007`).
+ *
+ * ## The canvas and a screen reader (`SENS-UX-032`, doc 28 §28.8)
+ *
+ * A canvas is opaque to assistive technology, so it carries an accessible name and a live
+ * description of what is happening — which test, which phase, whether the session is paused.
+ * The description is deliberately **procedural**: it says "measuring" and never "you hit" or
+ * "23 ms", because a running commentary of performance would be feedback the sighted player
+ * does not get, and that would make the two measurements different (`SENS-BR-007`).
  */
 
 type Engine = ReturnType<typeof useAimEngine>;
@@ -39,11 +48,37 @@ export function MeasuringLayer({ engine, onAbandon, progressLabel = null }: Meas
     abort,
   } = engine;
 
+  const round = stage.kind === "round" ? stage.round : null;
+  const testName = round === null ? null : copyFor({ key: round.testKey }).name;
+  const canvasLabel =
+    testName === null
+      ? "Aim measurement area"
+      : `Aim measurement area — ${testName}${round?.isPractice === true ? " practice" : ""}`;
+
+  // One sentence, procedural only. Paused states are announced because a player who cannot see
+  // the overlay needs to know why nothing is responding.
+  const statusText =
+    state === "paused"
+      ? `Paused. ${pauseReason ?? "Press resume to continue."}`
+      : state !== "running"
+        ? "Ready to begin. Activate the button to start and capture the cursor."
+        : round === null
+          ? "Preparing."
+          : trialPhase === "active"
+            ? `Measuring ${testName}.`
+            : `Get ready. ${testName} next.`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-void">
       <canvas
         ref={attachCanvas}
         data-testid="test-canvas"
+        // A canvas has no implicit role and no content a screen reader can reach. `img` with a
+        // name is the honest description of what it is: one rendered surface, described by the
+        // live region below rather than traversable.
+        role="img"
+        aria-label={canvasLabel}
+        aria-describedby="measuring-status"
         className="block max-h-full w-full max-w-[min(100vw,177.78vh)]"
         style={{ aspectRatio: "16 / 9" }}
       />
@@ -110,8 +145,8 @@ export function MeasuringLayer({ engine, onAbandon, progressLabel = null }: Meas
         </div>
       )}
 
-      <p className="sr-only" aria-live="polite" data-testid="trial-phase">
-        {stage.kind === "round" && trialPhase === "active" ? "Measuring" : "Get ready"}
+      <p id="measuring-status" className="sr-only" aria-live="polite" data-testid="trial-phase">
+        {statusText}
       </p>
     </div>
   );

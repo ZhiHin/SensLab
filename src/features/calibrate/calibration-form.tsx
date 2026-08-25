@@ -41,29 +41,37 @@ export interface HardwareProfileOption {
 export interface CalibrationFormProps {
   readonly games: readonly { readonly gameId: string; readonly displayName: string }[];
   readonly profiles: readonly HardwareProfileOption[];
+  /** Minutes per mode, computed from the trial budget on the server (`SENS-BR-024`). */
+  readonly estimatedMinutes: Readonly<Record<Mode, number>>;
   readonly busy: boolean;
   readonly error: string | null;
   readonly onSubmit: (values: CalibrationFormValues) => void;
 }
 
-const MODE_COPY: Readonly<
-  Record<"quick" | "standard" | "advanced", { label: string; detail: string }>
-> = {
-  quick: { label: "Quick", detail: "3 tests · 3 sensitivities · 2 rounds · about 10 minutes" },
-  standard: {
-    label: "Standard",
-    detail: "5 tests · 3 sensitivities · 3 rounds · about 20 minutes",
-  },
-  advanced: {
-    label: "Advanced",
-    detail: "10 tests · 4 sensitivities · 4 rounds · 40 minutes or more",
-  },
+type Mode = "quick" | "standard" | "advanced";
+
+/**
+ * What each mode runs. The shape is described here; **the duration is not** — it arrives
+ * derived from the trial budget (`SENS-BR-024`), because a written-down "about 20 minutes"
+ * becomes false the first time the budget changes and nothing fails.
+ */
+const MODE_COPY: Readonly<Record<Mode, { label: string; detail: string }>> = {
+  quick: { label: "Quick", detail: "3 tests · 3 sensitivities · 2 rounds" },
+  standard: { label: "Standard", detail: "5 tests · 3 sensitivities · 3 rounds" },
+  advanced: { label: "Advanced", detail: "10 tests · 4 sensitivities · 4 rounds" },
 };
 
 const input =
   "w-full border border-hairline-strong bg-surface-2 px-3 py-2 type-data-s text-text-1 disabled:opacity-40";
 
-export function CalibrationForm({ games, profiles, busy, error, onSubmit }: CalibrationFormProps) {
+export function CalibrationForm({
+  games,
+  profiles,
+  estimatedMinutes,
+  busy,
+  error,
+  onSubmit,
+}: CalibrationFormProps) {
   const preselected = profiles.find((profile) => profile.isDefault) ?? profiles[0] ?? null;
   const [mode, setMode] = useState<"quick" | "standard" | "advanced">("standard");
   const [profileId, setProfileId] = useState(preselected?.id ?? "");
@@ -127,7 +135,9 @@ export function CalibrationForm({ games, profiles, busy, error, onSubmit }: Cali
               data-testid={`mode-${key}`}
             />
             <span className="type-label text-text-1">{MODE_COPY[key].label}</span>
-            <span className="text-sm text-text-3">{MODE_COPY[key].detail}</span>
+            <span className="text-sm text-text-3">
+              {MODE_COPY[key].detail} · about {estimatedMinutes[key]} minutes
+            </span>
           </label>
         ))}
       </fieldset>

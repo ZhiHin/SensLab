@@ -193,18 +193,27 @@ export function HistoryList({ view }: { view: HistoryView }) {
                 ? "Tick one more."
                 : "Ready."}
           </span>
-          <Link
-            href={
-              selected.length === 2
-                ? `/history/compare?a=${selected[0] ?? ""}&b=${selected[1] ?? ""}`
-                : "/history"
-            }
-            className="border border-hairline px-5 py-2 type-label data-[ready=false]:pointer-events-none data-[ready=false]:opacity-40"
-            data-ready={selected.length === 2}
-            data-testid="compare-selected"
-          >
-            Compare the two
-          </Link>
+          {/* A disabled button rather than a dimmed link: a link that goes nowhere is still
+              announced as a link and still has to meet contrast, while a disabled control is
+              honest about the state and exempt from it. */}
+          {selected.length === 2 ? (
+            <Link
+              href={`/history/compare?a=${selected[0] ?? ""}&b=${selected[1] ?? ""}`}
+              className="border border-text-1 px-5 py-2 type-label text-text-1"
+              data-testid="compare-selected"
+            >
+              Compare the two
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="border border-hairline px-5 py-2 type-label text-text-3"
+              data-testid="compare-selected"
+            >
+              Compare the two
+            </button>
+          )}
         </div>
       )}
 
