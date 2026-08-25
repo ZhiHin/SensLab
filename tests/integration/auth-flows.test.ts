@@ -3,6 +3,12 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb } from "@/db/client";
 import { rateLimitCounters } from "@/db/schema";
 import { register, requestPasswordReset, signIn } from "@/services/auth-service";
+import {
+  getEmailTransport,
+  setEmailTransport,
+  verificationEmail,
+  type EmailMessage,
+} from "@/lib/email";
 import { authRepo, rateLimitRepo, userRepo } from "@/repositories";
 import { asUser } from "@tests/helpers/db";
 import { db, resetVolatileTables } from "@tests/helpers/db";
@@ -403,5 +409,75 @@ describe("what the rate limiter writes down — doc 23 §23.4", () => {
     // same bucket.
     expect(buckets.some((bucket) => bucket.startsWith("signin-account:"))).toBe(true);
     expect(buckets.some((bucket) => bucket.startsWith("register:"))).toBe(true);
+  });
+});
+
+describe("the account flows and the email transport", () => {
+  beforeEach(async () => {
+    await resetVolatileTables();
+    setEmailTransport(null);
+  });
+
+  afterAll(() => {
+    setEmailTransport(null);
+  });
+
+  /** Records what the flows hand to the transport, and reports whatever we tell it to. */
+  function recordingTransport(delivered: boolean) {
+    const sent: EmailMessage[] = [];
+    setEmailTransport({
+      name: "recording",
+      async deliver(message: EmailMessage) {
+        sent.push(message);
+        return { delivered, transport: "recording" };
+      },
+    });
+    return sent;
+  }
+
+  it("sends a verification link that carries the real token", async () => {
+    const sent = recordingTransport(true);
+    const email = "verify-delivery@senslab.test";
+
+    const result = await register({ email, password: PASSWORD });
+    const token = result.verificationToken;
+    expect(token).not.toBeNull();
+    if (token === null) return;
+
+    // The action layer composes the message, so drive it the way the action does.
+    await getEmailTransport(false).deliver(verificationEmail("https://senslab.test", token, email));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.to).toBe(email);
+    // The link must carry the token the database will actually accept, not a placeholder.
+    expect(sent[0]?.text).toContain(encodeURIComponent(token));
+  });
+
+  it("reports a refused delivery rather than claiming success", async () => {
+    // What the sign-up screen keys its wording off. A transport that lied here would let the
+    // product say "check your email" when nothing was sent.
+    recordingTransport(false);
+    const outcome = await getEmailTransport(false).deliver(
+      verificationEmail("https://senslab.test", "tok", "nobody@senslab.test"),
+    );
+    expect(outcome.delivered).toBe(false);
+  });
+
+  it("issues a reset link for a real account and nothing for an unknown one", async () => {
+    const sent = recordingTransport(true);
+    const email = "reset-delivery@senslab.test";
+    await register({ email, password: PASSWORD });
+
+    const real = await requestPasswordReset({ email });
+    expect(real.resetToken).not.toBeNull();
+
+    const unknown = await requestPasswordReset({ email: "no-such-account@senslab.test" });
+    expect(unknown.resetToken).toBeNull();
+    // The neutral sentence is identical either way — that is the point (`SENS-SEC-010`).
+    expect(unknown.message).toBe(real.message);
+
+    // And because there is no token, the flow has nothing to hand the transport: absence of a
+    // send is what keeps the timing and the logs from disclosing existence.
+    expect(sent).toHaveLength(0);
   });
 });

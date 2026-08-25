@@ -102,10 +102,15 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
     const env = getEnv();
     const result = await register(parsed.data, await requestMetadata());
 
+    // "Check your email" is a claim, and it is false if the message never left. Registration
+    // already returns a session and sign-in does not gate on verification, so a failed send
+    // costs the player nothing except the confirmation link — which is exactly what to say.
+    let delivered = true;
     if (result.verificationToken !== null) {
-      await getEmailTransport(env.NODE_ENV === "production").deliver(
+      const outcome = await getEmailTransport(env.NODE_ENV === "production").deliver(
         verificationEmail(env.APP_URL, result.verificationToken, parsed.data.email),
       );
+      delivered = outcome.delivered;
     }
 
     if (result.sessionToken !== null) {
@@ -113,7 +118,14 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
       await claimGuestWorkIfAny();
     }
 
-    return { status: "success", message: result.message, fieldErrors: {} };
+    return {
+      status: "success",
+      message: delivered
+        ? result.message
+        : "Your account is ready and you are signed in, but the confirmation email could not " +
+          "be sent. Nothing is blocked by that — it has been logged for us to look at.",
+      fieldErrors: {},
+    };
   } catch (error: unknown) {
     const appError = toAppError(error);
     if (!isAppError(error)) log.error("sign-up failed", { detail: appError.message });
@@ -181,6 +193,10 @@ export async function requestPasswordResetAction(
     const env = getEnv();
     const result = await requestPasswordReset(parsed.data, await requestMetadata());
     if (result.resetToken !== null) {
+      // The delivery outcome is deliberately **not** surfaced here, unlike at sign-up. This
+      // screen must answer identically whether or not an account exists (`SENS-SEC-010`), and
+      // a message that appeared only when a send was attempted would announce that one did.
+      // The transport logs the failure; the page says the same neutral sentence either way.
       await getEmailTransport(env.NODE_ENV === "production").deliver(
         passwordResetEmail(env.APP_URL, result.resetToken, parsed.data.email),
       );

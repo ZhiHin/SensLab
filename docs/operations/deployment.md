@@ -185,13 +185,50 @@ party from the browser.
 
 ---
 
-## 8. What is not included
+## 8. Email
+
+Verification and password-reset messages. Configured by three variables; `env.ts` refuses to
+start if a provider is selected without them.
+
+| `EMAIL_TRANSPORT`   | Behaviour                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `console` (default) | Writes to stdout in development. **In production it reports a failed delivery and logs an error on every send** — it never pretends. |
+| `resend`            | `POST https://api.resend.com/emails`                                                                                                 |
+| `postmark`          | `POST https://api.postmarkapp.com/email`, on the `outbound` transactional stream                                                     |
+
+`EMAIL_FROM` must be on a domain the provider has verified. Providers reject unverified senders
+outright, so a wrong value fails every send rather than degrading quietly.
+
+**No SDK is used.** Both providers are one JSON `POST`, so `fetch` is the whole integration and
+the dependency count stays where it is. Adding a third provider means adding a descriptor —
+endpoint, headers, body shape — to `PROVIDERS` in `src/lib/email.ts`; the timeout, retry and
+logging behaviour is shared.
+
+### What it will and will not survive
+
+Delivery is attempted **inline in the request**, with a 5-second per-attempt timeout and at most
+two attempts, retrying only transient failures (429 and 5xx). That covers a blip or a rate-limit
+burst. It does **not** survive a provider outage: there is no queue and no worker, and none is
+pretended at. If a send fails, `deliver()` returns `delivered: false`, the failure is logged with
+the provider, the status and the provider's own error id, and:
+
+- **Sign-up** tells the person the truth — their account is ready and they are signed in, but the
+  confirmation email did not go out. Sign-in does not gate on verification, so nothing is blocked.
+- **Password reset** says exactly what it always says. The screen must answer identically whether
+  or not an account exists (`SENS-SEC-010`), so a delivery-failure message there would announce
+  that an account does. The failure is logged instead.
+
+Message bodies carry live single-use tokens and are never logged on any path (`SENS-SEC-024`).
+
+There is no "resend confirmation" flow. If a verification email is lost the account still works,
+but the link cannot currently be reissued.
+
+---
+
+## 9. What is not included
 
 Stated plainly so nobody assumes otherwise:
 
-- **No email transport.** `src/lib/email.ts` is an interface with a development implementation
-  that logs. Verification and password-reset messages need a real transport wired in before
-  those flows work in production.
 - **No CDN or asset host configuration.** Fonts are self-hosted through `next/font`; there are
   no external asset requests to configure.
 - **No backup or restore procedure.** Standard PostgreSQL practice applies; nothing in the

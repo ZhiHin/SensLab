@@ -23,7 +23,7 @@ const secret = z
   .min(32, "must be at least 32 characters of high-entropy random data")
   .refine((value) => !value.startsWith("replace-me"), "must be replaced with a real secret");
 
-const envSchema = z.object({
+const envShape = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.url(),
 
@@ -52,7 +52,49 @@ const envSchema = z.object({
    * rather than trusting a forged one.
    */
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
+
+  /**
+   * Which email transport delivers verification and password-reset messages.
+   *
+   * `console` writes the message to stdout and is the development default. In production it
+   * refuses to pretend: it reports `delivered: false` and logs an error on every send, because
+   * a transport that silently swallows a password-reset link is worse than one that is absent.
+   */
+  EMAIL_TRANSPORT: z.enum(["console", "resend", "postmark"]).default("console"),
+  /** Provider API key. Required by every transport except `console`. */
+  EMAIL_API_KEY: z.string().min(1).optional(),
+  /**
+   * The `From` address, which must be on a domain the provider has verified. Providers reject
+   * unverified senders outright, so a wrong value here fails every send rather than degrading.
+   */
+  EMAIL_FROM: z.email().optional(),
 });
+
+/**
+ * Every variable this application reads.
+ *
+ * Exported so a test can hold `.env.example` to it. The template is what a new clone copies,
+ * and a variable that exists in the schema but not in the template is one that nobody can
+ * discover until it fails at startup.
+ */
+export const ENV_KEYS = Object.keys(envShape.shape);
+
+const envSchema = envShape
+  // Cross-field, because "which variables are required" depends on the transport chosen. A
+  // provider selected without credentials would otherwise fail on the first real send — during
+  // somebody's password reset — instead of at startup.
+  .superRefine((env, ctx) => {
+    if (env.EMAIL_TRANSPORT === "console") return;
+    for (const key of ["EMAIL_API_KEY", "EMAIL_FROM"] as const) {
+      if (env[key] === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: `is required when EMAIL_TRANSPORT is "${env.EMAIL_TRANSPORT}"`,
+        });
+      }
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 

@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template, which carries no secrets and is the file the README tells a new
+# clone to copy. Ignoring it made "cp .env.example .env.local" fail on a fresh checkout, and
+# meant every variable documented there was documented only on one machine.
+!.env.example
 
 # vercel
 .vercel

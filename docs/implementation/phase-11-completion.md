@@ -1,5 +1,9 @@
 # Phase 11 Completion Report — Hardening, Audit & Production Readiness
 
+> **Superseded in part.** Limitation §10.3 and the second bullet of §11 — the absent email
+> transport — were closed after this report by the work in
+> [`post-phase-11-email-transport.md`](post-phase-11-email-transport.md). Everything else stands.
+
 **Production readiness: `READY WITH KNOWN LIMITATIONS`.**
 
 The reasons are in §11. In short: the product is correct, tested and operable, and two things

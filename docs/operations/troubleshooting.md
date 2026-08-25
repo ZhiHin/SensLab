@@ -56,10 +56,27 @@ wrong.
 
 ### Password reset or verification emails never arrive
 
-There is no email transport wired in. `src/lib/email.ts` is an interface with a development
-implementation that logs the message instead of sending it. In development, read the token from
-the structured log. In production this must be implemented before those flows work — see
-`docs/operations/deployment.md` §8.
+Check `EMAIL_TRANSPORT` first.
+
+| Value                    | What is happening                                                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `console` in production  | Nothing is being sent. The transport reports a failed delivery and logs `no email provider is configured` on every send.                       |
+| `console` in development | Working as intended — the message is printed to stdout, token and all. Read it there.                                                          |
+| `resend` / `postmark`    | A real send was attempted. Look for `email delivery failed` in the logs; it carries the provider, the HTTP status and the provider's error id. |
+
+Common causes when a provider is configured:
+
+- **401 / 403** — wrong or revoked `EMAIL_API_KEY`. Not retried, because it will not fix itself.
+- **422 (Resend) / ErrorCode 300 (Postmark)** — `EMAIL_FROM` is not on a domain the provider has
+  verified, or the address is malformed. Also not retried.
+- **429 or 5xx** — transient. Retried once; if both attempts fail the message is lost, because
+  there is no queue. See `docs/operations/deployment.md` §8.
+
+The message body is never logged on any path, so the token cannot be recovered from logs to work
+around a failed send — that is deliberate (`SENS-SEC-024`).
+
+A lost **verification** email is not blocking: registration signs the user in and sign-in does not
+gate on verification. There is no resend flow, so the link itself cannot currently be reissued.
 
 ---
 
